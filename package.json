@@ -4,6 +4,8 @@
   "description": "Node.js Sonos Interface",
   "main": "index.js",
   "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
     "lint": "standard",
     "test": "mocha test/sonos.test.js",
     "test-onsite": "mocha test/",
@@ -44,7 +46,14 @@
     "url": "http://github.com/bencevans/node-sonos/issues"
   },
   "devDependencies": {
+    "@types/debug": "0.0.29",
+    "@types/ip": "0.0.29",
+    "@types/node": "^6.0.52",
+    "@types/request": "0.0.36",
+    "@types/underscore": "^1.7.36",
+    "@types/xml2js": "0.0.32",
     "mocha": "^3.2.0",
-    "standard": "*"
+    "standard": "*",
+    "typescript": "^2.1.4"
   }
 }
