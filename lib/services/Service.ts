@@ -36,11 +36,11 @@ export class Service {
     this.SCPDURL = options.SCPDURL
   }
 
-  _request(action, variables: string[], callback) {
+  _request(action, variables: {[key:string]: string}, callback) {
     const messageAction = '"urn:schemas-upnp-org:service:' + this.name + ':1#' + action + '"'
     const messageBodyPre = '<u:' + action + ' xmlns:u="urn:schemas-upnp-org:service:' + this.name + ':1">'
     const messageBodyPost = '</u:' + action + '>'
-    const messageBody = messageBodyPre + variables.map((value, key) => '<' + key + '>' + value + '</' + key + '>').join('') + messageBodyPost
+    const messageBody = messageBodyPre + _.map(variables, (value, key) => '<' + key + '>' + value + '</' + key + '>').join('') + messageBodyPost
     const responseTag = 'u:' + action + 'Response'
 
     request({
@@ -68,7 +68,7 @@ export class Service {
 
         const output = json['s:Envelope']['s:Body'][0][responseTag][0]
         delete output.$
-        output.forEach((item, key) => {
+        _.each(output, (item, key) => {
           output[key] = item[0]
         })
         return callback(null, output)

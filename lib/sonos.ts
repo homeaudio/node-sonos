@@ -841,7 +841,7 @@ export class Sonos {
         let zones = null
         let mediaServers = null
         if (info.ZonePlayers && info.ZonePlayers.length > 0) {
-          zones = info.ZonePlayers[0].ZonePlayer.map((zone) => _.extend(zone.$, {name: zone._}))
+          zones = _.map(info.ZonePlayers[0].ZonePlayer, (zone) => _.extend(zone.$, {name: zone._}))
         }
         if (info.MediaServers && info.MediaServers.length > 0) {
           mediaServers = _.map(info.MediaServers[0].MediaServer, function (zone) {
