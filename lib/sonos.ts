@@ -18,6 +18,27 @@ import * as _ from 'underscore'
 
 const log = debug('sonos')
 
+
+/**
+ * Option Interfaces
+ */
+interface SearchMusicLibraryOptions {
+  start?: number
+  total?: number
+}
+
+function parseXML(str: string) {
+  return new Promise<{[key: string]: string}>((resolve, reject) => {
+    const parser = new xml2js.Parser()
+    parser.parseString(str, (err, didl) => {
+      if (err) {
+        reject(err)
+      }
+      resolve(didl)
+    })
+  })
+}
+
 /**
  * Services
  */
@@ -120,32 +141,33 @@ export class Sonos {
    * @param  {String}   action      UPnP Call/Function/Action
    * @param  {String}   body
    * @param  {String}   responseTag Expected Response Container XML Tag
-   * @param  {Function} callback    (err, data)
    */
-  request(endpoint: string, action: string, body: string, responseTag, callback: Function) {
-    log('Sonos.request(%j, %j, %j, %j, %j)', endpoint, action, body, responseTag, callback)
-    request({
-      uri: 'http://' + this.host + ':' + this.port + endpoint,
-      method: 'POST',
-      headers: {
-        'SOAPAction': action,
-        'Content-type': 'text/xml; charset=utf8'
-      },
-      body: withinEnvelope(body)
-    }, function (err, res, body) {
-      if (err) return callback(err)
-      if (res.statusCode !== 200) {
-        return callback(new Error('HTTP response code ' + res.statusCode + ' for ' + action))
-      }
-      (new xml2js.Parser()).parseString(body, function (err, json) {
-        if (err) return callback(err)
-        if ((!json) || (!json['s:Envelope']) || (!util.isArray(json['s:Envelope']['s:Body']))) {
-          return callback(new Error('Invalid response for ' + action + ': ' + JSON.stringify(json)))
+  request(endpoint: string, action: string, body: string, responseTag: string) {
+    log('Sonos.request(%j, %j, %j, %j, %j)', endpoint, action, body, responseTag)
+    return new Promise<{[key: string]: any}>((resolve, reject) => {
+      request({
+        uri: 'http://' + this.host + ':' + this.port + endpoint,
+        method: 'POST',
+        headers: {
+          'SOAPAction': action,
+          'Content-type': 'text/xml; charset=utf8'
+        },
+        body: withinEnvelope(body)
+      }, function (err, res, body) {
+        if (err) return reject(err)
+        if (res.statusCode !== 200) {
+          return reject(new Error('HTTP response code ' + res.statusCode + ' for ' + action))
         }
-        if (typeof json['s:Envelope']['s:Body'][0]['s:Fault'] !== 'undefined') {
-          return callback(json['s:Envelope']['s:Body'][0]['s:Fault'])
-        }
-        return callback(null, json['s:Envelope']['s:Body'][0][responseTag])
+        (new xml2js.Parser()).parseString(body, function (err, json) {
+          if (err) return reject(err)
+          if ((!json) || (!json['s:Envelope']) || (!util.isArray(json['s:Envelope']['s:Body']))) {
+            return reject(new Error('Invalid response for ' + action + ': ' + JSON.stringify(json)))
+          }
+          if (typeof json['s:Envelope']['s:Body'][0]['s:Fault'] !== 'undefined') {
+            return reject(json['s:Envelope']['s:Body'][0]['s:Fault'])
+          }
+          return resolve(json['s:Envelope']['s:Body'][0][responseTag])
+        })
       })
     })
   }
@@ -156,8 +178,8 @@ export class Sonos {
    * @param  {Object}   options     Optional - default {start: 0, total: 100}
    * @param  {Function} callback (err, result) result - {returned: {String}, total: {String}, items:[{title:{String}, uri: {String}}]}
    */
-  getMusicLibrary(searchType: string, options, callback) {
-    this.searchMusicLibrary(searchType, null, options, callback)
+  getMusicLibrary(searchType: string, options) {
+    return this.searchMusicLibrary(searchType, null, options)
   }
 
   /**
@@ -167,8 +189,8 @@ export class Sonos {
    * @param  {Object}   options     Optional - default {start: 0, total: 100}
    * @param  {Function} callback (err, result) result - {returned: {String}, total: {String}, items:[{title:{String}, uri: {String}}]}
    */
-  searchMusicLibrary(searchType, searchTerm, options, callback) {
-    const self = this
+  async searchMusicLibrary(searchType, searchTerm: string | null, options: SearchMusicLibraryOptions) {
+
     let searches = {
       'artists': 'A:ARTIST',
       'albumArtists': 'A:ALBUMARTIST',
@@ -190,7 +212,9 @@ export class Sonos {
     searches = searches[searchType]
 
     const opensearch = (!searchTerm) || (searchTerm === '')
-    if (!opensearch) searches = searches.concat(':' + searchTerm)
+    if (!opensearch) {
+      searches = searches.concat(':' + searchTerm)
+    }
 
     let opts = {
       ObjectID: searches
@@ -199,86 +223,79 @@ export class Sonos {
     if (options.total !== undefined) opts.RequestedCount = options.total
     opts = _.extend(defaultOptions, opts)
     const contentDirectory = new ContentDirectory(this.host, this.port)
-    return contentDirectory.Browse(opts, function (err, data) {
-      if (err) return callback(err)
-      return (new xml2js.Parser()).parseString(data.Result, function (err, didl) {
-        if (err) return callback(err, data)
-        const items = []
-        if ((!didl) || (!didl['DIDL-Lite'])) {
-          return callback(new Error('Cannot parse DIDTL result'), data)
+    const data = await contentDirectory.Browse(opts)
+    const didl = await parseXML(data['Result'])
+    if ((!didl) || (!didl['DIDL-Lite'])) {
+      throw new Error('Cannot parse DIDTL result')
+    }
+    const resultcontainer: any[] = opensearch ? didl['DIDL-Lite']['container'] : didl['DIDL-Lite']['item']
+    if (!util.isArray(resultcontainer)) {
+      throw new Error('Cannot parse DIDTL result')
+    }
+
+    const items = resultcontainer.map(item => {
+      let albumArtURL: string | null = null
+      if (util.isArray(item['upnp:albumArtURI'])) {
+        if (item['upnp:albumArtURI'][0].indexOf('http') !== -1) {
+          albumArtURL = item['upnp:albumArtURI'][0]
+        } else {
+          albumArtURL = 'http://' + this.host + ':' + this.port + item['upnp:albumArtURI'][0]
         }
-        const resultcontainer = opensearch ? didl['DIDL-Lite'].container : didl['DIDL-Lite'].item
-        if (!util.isArray(resultcontainer)) {
-          return callback(new Error('Cannot parse DIDTL result'), data)
-        }
-        resultcontainer.forEach(function (item) {
-          let albumArtURL = null
-          if (util.isArray(item['upnp:albumArtURI'])) {
-            if (item['upnp:albumArtURI'][0].indexOf('http') !== -1) {
-              albumArtURL = item['upnp:albumArtURI'][0]
-            } else {
-              albumArtURL = 'http://' + self.host + ':' + self.port + item['upnp:albumArtURI'][0]
-            }
-          }
-          items.push({
-            'title': util.isArray(item['dc:title']) ? item['dc:title'][0] : null,
-            'artist': util.isArray(item['dc:creator']) ? item['dc:creator'][0] : null,
-            'albumArtURL': albumArtURL,
-            'album': util.isArray(item['upnp:album']) ? item['upnp:album'][0] : null,
-            'uri': util.isArray(item.res) ? item.res[0]._ : null
-          })
-        })
-        const result = {
-          returned: data.NumberReturned,
-          total: data.TotalMatches,
-          items: items
-        }
-        return callback(null, result)
-      })
+      }
+      return {
+        'title': util.isArray(item['dc:title']) ? item['dc:title'][0] : null,
+        'artist': util.isArray(item['dc:creator']) ? item['dc:creator'][0] : null,
+        'albumArtURL': albumArtURL,
+        'album': util.isArray(item['upnp:album']) ? item['upnp:album'][0] : null,
+        'uri': util.isArray(item.res) ? item.res[0]._ : null
+      }
     })
+    return {
+      returned: data['NumberReturned'],
+      total: data['TotalMatches'],
+      items
+    }
   }
 
   /**
    * Get Current Track
-   * @param  {Function} callback (err, track)
    */
-  currentTrack(callback) {
-    log('Sonos.currentTrack(' + ((callback) ? 'callback' : '') + ')')
-    const self = this
+  async currentTrack() {
+    log('Sonos.currentTrack()')
     const action = '"urn:schemas-upnp-org:service:AVTransport:1#GetPositionInfo"'
     const body = '<u:GetPositionInfo xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID><Channel>Master</Channel></u:GetPositionInfo>'
     const responseTag = 'u:GetPositionInfoResponse'
-    return this.request(this.options.endpoints.transport, action, body, responseTag, function (err, data) {
-      if (err) return callback(err)
-      if ((!util.isArray(data)) || (data.length < 1)) return {}
-      const metadata = data[0].TrackMetaData
-      const position = (parseInt(data[0].RelTime[0].split(':')[0], 10) * 60 * 60) +
-        (parseInt(data[0].RelTime[0].split(':')[1], 10) * 60) +
-        parseInt(data[0].RelTime[0].split(':')[2], 10)
-      const duration = (parseInt(data[0].TrackDuration[0].split(':')[0], 10) * 60 * 60) +
-        (parseInt(data[0].TrackDuration[0].split(':')[1], 10) * 60) +
-        parseInt(data[0].TrackDuration[0].split(':')[2], 10)
-      const trackUri = data[0].TrackURI ? data[0].TrackURI[0] : null
-      if ((metadata) && (metadata[0].length > 0) && metadata[0] !== 'NOT_IMPLEMENTED') {
-        return (new xml2js.Parser()).parseString(metadata, function (err, data) {
-          if (err) {
-            return callback(err, data)
-          }
-          const track = self.parseDIDL(data)
-          track.position = position
-          track.duration = duration
-          track.albumArtURL = !track.albumArtURI ? null
-            : (track.albumArtURI.indexOf('http') !== -1) ? track.albumArtURI
-              : 'http://' + self.host + ':' + self.port + track.albumArtURI
-          if (trackUri) track.uri = trackUri
-          return callback(null, track)
-        })
-      } else {
-        const track = { position: position, duration: duration }
-        if (data[0].TrackURI) track.uri = data[0].TrackURI[0]
-        return callback(null, track)
+    const data = await this.request(this.options.endpoints.transport, action, body, responseTag)
+    if ((!util.isArray(data)) || (data.length < 1)) {
+      return {}
+    }
+    const metadata = data[0].TrackMetaData
+    const position = (parseInt(data[0].RelTime[0].split(':')[0], 10) * 60 * 60) +
+      (parseInt(data[0].RelTime[0].split(':')[1], 10) * 60) +
+      parseInt(data[0].RelTime[0].split(':')[2], 10)
+    const duration = (parseInt(data[0].TrackDuration[0].split(':')[0], 10) * 60 * 60) +
+      (parseInt(data[0].TrackDuration[0].split(':')[1], 10) * 60) +
+      parseInt(data[0].TrackDuration[0].split(':')[2], 10)
+    const trackUri = data[0].TrackURI ? data[0].TrackURI[0] : null
+    if ((metadata) && (metadata[0].length > 0) && metadata[0] !== 'NOT_IMPLEMENTED') {
+      const metadataData = await parseXML(metadata)
+      const track = this.parseDIDL(metadataData)
+      track.position = position
+      track.duration = duration
+      track.albumArtURL = !track.albumArtURI ? null
+        : (track.albumArtURI.indexOf('http') !== -1) ? track.albumArtURI
+          : 'http://' + this.host + ':' + this.port + track.albumArtURI
+      if (trackUri) {
+        track.uri = trackUri
       }
-    })
+      return track
+    } else {
+      const track = { position: position, duration: duration }
+      if (data[0].TrackURI) {
+        track.uri = data[0].TrackURI[0]
+      }
+      return track
+    }
   }
 
   /**
@@ -299,46 +316,40 @@ export class Sonos {
 
   /**
    * Get Current Volume
-   * @param  {Function} callback (err, volume)
    */
-  getVolume(callback) {
-    log('Sonos.getVolume(' + ((callback) ? 'callback' : '') + ')')
+  async getVolume() {
+    log('Sonos.getVolume()')
     const action = '"urn:schemas-upnp-org:service:RenderingControl:1#GetVolume"'
     const body = '<u:GetVolume xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1"><InstanceID>0</InstanceID><Channel>Master</Channel></u:GetVolume>'
     const responseTag = 'u:GetVolumeResponse'
-    return this.request(this.options.endpoints.rendering, action, body, responseTag, function (err, data) {
-      if (err) return callback(err)
-      callback(null, parseInt(data[0].CurrentVolume[0], 10))
-    })
+    const data = await this.request(this.options.endpoints.rendering, action, body, responseTag)
+    return parseInt(data[0].CurrentVolume[0], 10)
   }
 
   /**
    * Get Current Muted
-   * @param  {Function} callback (err, muted)
    */
-  getMuted(callback) {
-    log('Sonos.getMuted(' + ((callback) ? 'callback' : '') + ')')
+  async getMuted() {
+    log('Sonos.getMuted()')
     const action = '"urn:schemas-upnp-org:service:RenderingControl:1#GetMute"'
     const body = '<u:GetMute xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1"><InstanceID>0</InstanceID><Channel>Master</Channel></u:GetMute>'
     const responseTag = 'u:GetMuteResponse'
-    return this.request(this.options.endpoints.rendering, action, body, responseTag, function (err, data) {
-      if (err) return callback(err)
-      callback(null, !!parseInt(data[0].CurrentMute[0], 10))
-    })
+    const data = this.request(this.options.endpoints.rendering, action, body, responseTag)
+    return !!parseInt(data[0].CurrentMute[0], 10)
   }
 
   /**
    * Resumes Queue or Plays Provided URI
    * @param  {String|Object}   uri      Optional - URI to a Audio Stream or Object with play options
-   * @param  {Function} callback (err, playing)
    */
-  play(uri, callback) {
-    log('Sonos.play(%j, %j)', uri, callback)
+  async play(uri: string | Object) {
+    log('Sonos.play(%j)', uri)
     let action
     let body
     const self = this
-    const cb = (typeof uri === 'function' ? uri : callback) || function () {}
-    if (typeof uri === 'string') uri = optionsFromSpotifyUri(uri)
+    if (typeof uri === 'string') {
+      uri = optionsFromSpotifyUri(uri)
+    }
     const options = (typeof uri === 'object' ? uri : {})
     if (typeof uri === 'object') {
       options.uri = uri.uri
@@ -379,173 +390,150 @@ export class Sonos {
 
   /**
    * Stop What's Playing
-   * @param  {Function} callback (err, stopped)
    */
-  stop(callback) {
-    log('Sonos.stop(%j)', callback)
+  async stop(callback) {
+    log('Sonos.stop()')
     const action = '"urn:schemas-upnp-org:service:AVTransport:1#Stop"'
     const body = '<u:Stop xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID><Speed>1</Speed></u:Stop>'
-    return this.request(this.options.endpoints.transport, action, body, 'u:StopResponse', function (err, data) {
-      if (err) return callback(err)
-      if (data[0].$['xmlns:u'] === 'urn:schemas-upnp-org:service:AVTransport:1') {
-        return callback(null, true)
-      } else {
-        return callback(new Error({
-          err: err,
-          data: data
-        }), false)
-      }
-    })
+    const data = await this.request(this.options.endpoints.transport, action, body, 'u:StopResponse')
+    if (data[0].$['xmlns:u'] === 'urn:schemas-upnp-org:service:AVTransport:1') {
+      return true
+    } else {
+      throw new Error({
+        err: err,
+        data: data
+      })
+    }
   }
 
   /**
    * Become Coordinator of Standalone Group
    * @param  {Function} callback (err, stopped)
    */
-  becomeCoordinatorOfStandaloneGroup(callback) {
-    log('Sonos.becomeCoordinatorOfStandaloneGroup(%j)', callback)
+  async becomeCoordinatorOfStandaloneGroup() {
+    log('Sonos.becomeCoordinatorOfStandaloneGroup()')
     const action = '"urn:schemas-upnp-org:service:AVTransport:1#BecomeCoordinatorOfStandaloneGroup"'
     const body = '<u:BecomeCoordinatorOfStandaloneGroup xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID></u:BecomeCoordinatorOfStandaloneGroup>'
-    return this.request(this.options.endpoints.transport, action, body, 'u:BecomeCoordinatorOfStandaloneGroupResponse', function (err, data) {
-      if (err) return callback(err)
-      if (data[0].$['xmlns:u'] === 'urn:schemas-upnp-org:service:AVTransport:1') {
-        return callback(null, true)
-      } else {
-        return callback(new Error({
-          err: err,
-          data: data
-        }), false)
-      }
-    })
+    const data = this.request(this.options.endpoints.transport, action, body, 'u:BecomeCoordinatorOfStandaloneGroupResponse')
+    if (data[0].$['xmlns:u'] === 'urn:schemas-upnp-org:service:AVTransport:1') {
+      return true
+    } else {
+      throw new Error({
+        err: err,
+        data: data
+      })
+    }
   }
 
   /**
    * Pause Current Queue
-   * @param  {Function} callback (err, paused)
    */
-  pause(callback) {
-    log('Sonos.pause(%j)', callback)
+  async pause() {
+    log('Sonos.pause()')
     const action = '"urn:schemas-upnp-org:service:AVTransport:1#Pause"'
     const body = '<u:Pause xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID><Speed>1</Speed></u:Pause>'
-    return this.request(this.options.endpoints.transport, action, body, 'u:PauseResponse', function (err, data) {
-      if (err) return callback(err)
-      if (data[0].$['xmlns:u'] === 'urn:schemas-upnp-org:service:AVTransport:1') {
-        return callback(null, true)
-      } else {
-        return callback(new Error({
-          err: err,
-          data: data
-        }), false)
-      }
-    })
+    const data = await this.request(this.options.endpoints.transport, action, body, 'u:PauseResponse')
+    if (data[0].$['xmlns:u'] === 'urn:schemas-upnp-org:service:AVTransport:1') {
+      return true
+    } else {
+      throw new Error({
+        err: err,
+        data: data
+      })
+    }
   }
 
   /**
    * Seek the current track
-   * @param  {Function} callback (err, seeked)
    */
-  seek(seconds, callback) {
-    log('Sonos.seek(%j)', callback)
-    var hh, mm, ss
+  async seek(seconds) {
+    log('Sonos.seek(%j)', seconds)
+    let hh, mm, ss
     hh = Math.floor(seconds / 3600)
     mm = Math.floor((seconds - (hh * 3600)) / 60)
     ss = seconds - ((hh * 3600) + (mm * 60))
-    if (hh < 10) hh = '0' + hh
-    if (mm < 10) mm = '0' + mm
-    if (ss < 10) ss = '0' + ss
+    if (hh < 10) {
+      hh = '0' + hh
+    }
+    if (mm < 10) {
+      mm = '0' + mm
+    }
+    if (ss < 10) {
+      ss = '0' + ss
+    }
     const action = '"urn:schemas-upnp-org:service:AVTransport:1#Seek"'
     const body = '<u:Seek xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID><Unit>REL_TIME</Unit><Target>' + hh + ':' + mm + ':' + ss + '</Target></u:Seek>'
-    return this.request(this.options.endpoints.transport, action, body, 'u:SeekResponse', function (err, data) {
-      if (err) return callback(err)
-      if (data[0].$['xmlns:u'] === 'urn:schemas-upnp-org:service:AVTransport:1') {
-        return callback(null, true)
-      } else {
-        return callback(new Error({
-          err: err,
-          data: data
-        }), false)
-      }
-    })
+    const data = await this.request(this.options.endpoints.transport, action, body, 'u:SeekResponse')
+    if (data[0].$['xmlns:u'] === 'urn:schemas-upnp-org:service:AVTransport:1') {
+      return true
+    } else {
+      throw new Error({
+        err: err,
+        data: data
+      })
+    }
   }
 
   /**
    * Select specific track in queue
    * @param  {Number}   trackNr    Number of track in queue (optional, indexed from 1)
-   * @param  {Function} callback (err, data)
    */
-  selectTrack(trackNr, callback) {
-    if (typeof trackNr === 'function') {
-      callback = trackNr
-      trackNr = 1
-    }
+  async selectTrack(trackNr = 1) {
+    log(`Sonos.selectTrack(${trackNr}`)
     const action = '"urn:schemas-upnp-org:service:AVTransport:1#Seek"'
     const body = '<u:Seek xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID><Unit>TRACK_NR</Unit><Target>' + trackNr + '</Target></u:Seek>'
-    return this.request(this.options.endpoints.transport, action, body, 'u:SeekResponse', function (err, data) {
-      if (err) return callback(err)
-      if (data[0].$['xmlns:u'] === 'urn:schemas-upnp-org:service:AVTransport:1') {
-        return callback(null, true)
-      } else {
-        return callback(new Error({
-          err: err,
-          data: data
-        }), false)
-      }
-    })
+    const data = await this.request(this.options.endpoints.transport, action, body, 'u:SeekResponse')
+    if (data[0].$['xmlns:u'] === 'urn:schemas-upnp-org:service:AVTransport:1') {
+      return true
+    } else {
+      throw new Error({
+        err: err,
+        data: data
+      })
+    }
   }
 
   /**
    * Play next in queue
-   * @param  {Function} callback (err, movedToNext)
    */
-  next(callback) {
-    log('Sonos.next(%j)', callback)
+  async next() {
+    log('Sonos.next()')
     const action = '"urn:schemas-upnp-org:service:AVTransport:1#Next"'
     const body = '<u:Next xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID><Speed>1</Speed></u:Next>'
-    this.request(this.options.endpoints.transport, action, body, 'u:NextResponse', function (err, data) {
-      if (err) {
-        return callback(err)
-      }
-      if (data[0].$['xmlns:u'] === 'urn:schemas-upnp-org:service:AVTransport:1') {
-        return callback(null, true)
-      } else {
-        return callback(new Error({
-          err: err,
-          data: data
-        }), false)
-      }
-    })
+    const data = await this.request(this.options.endpoints.transport, action, body, 'u:NextResponse')
+    if (data[0].$['xmlns:u'] === 'urn:schemas-upnp-org:service:AVTransport:1') {
+      return true
+    } else {
+      throw new Error({
+        err: err,
+        data: data
+      })
+    }
   }
 
   /**
    * Play previous in queue
-   * @param  {Function} callback (err, movedToPrevious)
    */
-  previous(callback) {
-    log('Sonos.previous(%j)', callback)
+  async previous() {
+    log('Sonos.previous()')
     const action = '"urn:schemas-upnp-org:service:AVTransport:1#Previous"'
     const body = '<u:Previous xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID><Speed>1</Speed></u:Previous>'
-    this.request(this.options.endpoints.transport, action, body, 'u:PreviousResponse', function (err, data) {
-      if (err) {
-        return callback(err)
-      }
-      if (data[0].$['xmlns:u'] === 'urn:schemas-upnp-org:service:AVTransport:1') {
-        return callback(null, true)
-      } else {
-        return callback(new Error({
-          err: err,
-          data: data
-        }), false)
-      }
-    })
+    const data = this.request(this.options.endpoints.transport, action, body, 'u:PreviousResponse')
+    if (data[0].$['xmlns:u'] === 'urn:schemas-upnp-org:service:AVTransport:1') {
+      return true
+    } else {
+      throw (new Error({
+        err: err,
+        data: data
+      })
+    }
   }
 
   /**
    * Select Queue. Mostly required after turning on the speakers otherwise play, setPlaymode and other commands will fail.
-   * @param  {Function}  callback (err, data)  Optional
    */
-  selectQueue(callback) {
-    log('Sonos.selectQueue(%j)', callback)
-    const cb = callback || function () {}
+  selectQueue() {
+    log('Sonos.selectQueue()')
     const self = this
     self.getZoneInfo(function (err, data) {
       if (!err) {
@@ -585,37 +573,29 @@ export class Sonos {
 
   /**
    * Plays Spotify radio based on artist uri
-   * @param  {String}   artistId  Spotify artist id
-   * @param  {Function} callback (err, playing)
    */
-  playSpotifyRadio(artistId, artistName, callback) {
-    log('Sonos.playSpotifyRadio(%j, %j, %j)', artistId, artistName, callback)
+  async playSpotifyRadio(artistId: string, artistName: string) {
+    log('Sonos.playSpotifyRadio(%j, %j)', artistId, artistName)
     const self = this
-    if (!artistId || !artistName) {
-      return callback(new Error('artistId and artistName are required'))
-    }
     const options = optionsFromSpotifyUri('spotify:artistRadio:' + artistId, artistName)
     const action = '"urn:schemas-upnp-org:service:AVTransport:1#SetAVTransportURI"'
     const body = '<u:SetAVTransportURI xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID><CurrentURI>x-sonosapi-radio:' + options.uri + '?sid=12&amp;flags=8300&amp;sn=1</CurrentURI><CurrentURIMetaData>' + htmlEntities(options.metadata) + '</CurrentURIMetaData></u:SetAVTransportURI>'
-    return this.request(this.options.endpoints.transport, action, body, 'u:SetAVTransportURIResponse', function (err, data) {
-      if (err) return callback(err)
-      if (data[0].$['xmlns:u'] === 'urn:schemas-upnp-org:service:AVTransport:1') {
-        return self.play(callback)
-      } else {
-        return callback(new Error({
-          err: err,
-          data: data
-        }), false)
-      }
-    })
+    const data = await this.request(this.options.endpoints.transport, action, body, 'u:SetAVTransportURIResponse')
+    if (data[0].$['xmlns:u'] === 'urn:schemas-upnp-org:service:AVTransport:1') {
+      return self.play()
+    } else {
+      throw (new Error({
+        err: err,
+        data: data
+      })
+    }
   }
 
   /**
    * Queue a Song Next
    * @param  {String|Object}   uri      URI to Audio Stream or Object containing options (uri, metadata)
-   * @param  {Function} callback (err, queued)
    */
-  queueNext(uri, callback) {
+  queueNext(uri) {
     log('Sonos.queueNext(%j, %j)', uri, callback)
     var options = (typeof uri === 'object' ? uri : { metadata: '' })
     if (typeof uri === 'object') {
@@ -625,15 +605,9 @@ export class Sonos {
     } else {
       options.uri = uri
     }
-    var action = '"urn:schemas-upnp-org:service:AVTransport:1#SetAVTransportURI"'
-    var body = '<u:SetAVTransportURI xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID><CurrentURI>' + options.uri + '</CurrentURI><CurrentURIMetaData>' + options.metadata + '</CurrentURIMetaData></u:SetAVTransportURI>'
-    this.request(this.options.endpoints.transport, action, body, 'u:SetAVTransportURIResponse', function (err, data) {
-      if (callback) {
-        return callback(err, data)
-      } else {
-        return null
-      }
-    })
+    const action = '"urn:schemas-upnp-org:service:AVTransport:1#SetAVTransportURI"'
+    const body = '<u:SetAVTransportURI xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID><CurrentURI>' + options.uri + '</CurrentURI><CurrentURIMetaData>' + options.metadata + '</CurrentURIMetaData></u:SetAVTransportURI>'
+    return this.request(this.options.endpoints.transport, action, body, 'u:SetAVTransportURIResponse')
   }
 
   /**
@@ -658,88 +632,79 @@ export class Sonos {
     } else {
       options.uri = uri
     }
-    var action = '"urn:schemas-upnp-org:service:AVTransport:1#AddURIToQueue"'
-    var body = '<u:AddURIToQueue xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID><EnqueuedURI>' + options.uri + '</EnqueuedURI><EnqueuedURIMetaData>' + options.metadata + '</EnqueuedURIMetaData><DesiredFirstTrackNumberEnqueued>' + positionInQueue + '</DesiredFirstTrackNumberEnqueued><EnqueueAsNext>1</EnqueueAsNext></u:AddURIToQueue>'
-    this.request(this.options.endpoints.transport, action, body, 'u:AddURIToQueueResponse', function (err, data) {
-      return callback(err, data)
-    })
+    const action = '"urn:schemas-upnp-org:service:AVTransport:1#AddURIToQueue"'
+    const body = '<u:AddURIToQueue xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID><EnqueuedURI>' + options.uri + '</EnqueuedURI><EnqueuedURIMetaData>' + options.metadata + '</EnqueuedURIMetaData><DesiredFirstTrackNumberEnqueued>' + positionInQueue + '</DesiredFirstTrackNumberEnqueued><EnqueueAsNext>1</EnqueueAsNext></u:AddURIToQueue>'
+    return this.request(this.options.endpoints.transport, action, body, 'u:AddURIToQueueResponse')
   }
 
   /**
    * Flush queue
    * @param  {Function} callback (err, flushed)
    */
-  flush(callback) {
-    log('Sonos.flush(%j)', callback)
-    var action, body
-    action = '"urn:schemas-upnp-org:service:AVTransport:1#RemoveAllTracksFromQueue"'
-    body = '<u:RemoveAllTracksFromQueue xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID></u:RemoveAllTracksFromQueue>'
-    this.request(this.options.endpoints.transport, action, body, 'u:RemoveAllTracksFromQueueResponse', function (err, data) {
-      return callback(err, data)
-    })
+  flush() {
+    log('Sonos.flush()')
+    const action = '"urn:schemas-upnp-org:service:AVTransport:1#RemoveAllTracksFromQueue"'
+    const body = '<u:RemoveAllTracksFromQueue xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID></u:RemoveAllTracksFromQueue>'
+    return this.request(this.options.endpoints.transport, action, body, 'u:RemoveAllTracksFromQueueResponse')
   }
 
   /**
    * Get the LED State
-   * @param  {Function} callback (err, state) state is a string, "On" or "Off"
    */
-  getLEDState(callback) {
-    log('Sonos.getLEDState(%j)', callback)
-    var action = '"urn:schemas-upnp-org:service:DeviceProperties:1#GetLEDState"'
-    var body = '<u:GetLEDState xmlns:u="urn:schemas-upnp-org:service:DeviceProperties:1"></u:GetLEDState>'
-    this.request(this.options.endpoints.device, action, body, 'u:GetLEDStateResponse', function (err, data) {
-      if (err) return callback(err, data)
-      if (data[0] && data[0].CurrentLEDState && data[0].CurrentLEDState[0]) {
-        return callback(null, data[0].CurrentLEDState[0])
-      }
-      callback(new Error('unknown response'))
-    })
+  async getLEDState(): Promise<"On" | "Off"> {
+    log('Sonos.getLEDState()')
+    const action = '"urn:schemas-upnp-org:service:DeviceProperties:1#GetLEDState"'
+    const body = '<u:GetLEDState xmlns:u="urn:schemas-upnp-org:service:DeviceProperties:1"></u:GetLEDState>'
+    const data = await this.request(this.options.endpoints.device, action, body, 'u:GetLEDStateResponse')
+    if (data[0] && data[0].CurrentLEDState && data[0].CurrentLEDState[0]) {
+      return data[0].CurrentLEDState[0]
+    } else {
+      throw new Error('unknown response')
+    }
   }
 
   /**
    * Set the LED State
-   * @param  {String}   desiredState           "On"/"Off"
-   * @param  {Function} callback (err)
    */
-  setLEDState(desiredState: string, callback) {
-    log('Sonos.setLEDState(%j, %j)', desiredState, callback)
-    var action = '"urn:schemas-upnp-org:service:DeviceProperties:1#SetLEDState"'
+  setLEDState(desiredState: "On" | "Off") {
+    log('Sonos.setLEDState(%j)', desiredState)
+    const action = '"urn:schemas-upnp-org:service:DeviceProperties:1#SetLEDState"'
     const body = '<u:SetLEDState xmlns:u="urn:schemas-upnp-org:service:DeviceProperties:1"><DesiredLEDState>' + desiredState + '</DesiredLEDState></u:SetLEDState>'
-    this.request(this.options.endpoints.device, action, body, 'u:SetLEDStateResponse', function (err) {
-      return callback(err)
-    })
+    return this.request(this.options.endpoints.device, action, body, 'u:SetLEDStateResponse')
   }
 
   /**
    * Get Zone Info
-   * @param  {Function} callback (err, info)
    */
-  getZoneInfo(callback) {
-    log('Sonos.getZoneInfo(%j)', callback)
+  async getZoneInfo() {
+    log('Sonos.getZoneInfo()')
     const action = '"urn:schemas-upnp-org:service:DeviceProperties:1#GetZoneInfo"'
     const body = '<u:GetZoneInfo xmlns:u="urn:schemas-upnp-org:service:DeviceProperties:1"></u:GetZoneInfo>'
-    this.request(this.options.endpoints.device, action, body, 'u:GetZoneInfoResponse', function (err, data) {
-      if (err) return callback(err, data)
+    const data = await this.request(this.options.endpoints.device, action, body, 'u:GetZoneInfoResponse')
       const output = {}
-      for (const d in data[0]) if (data[0].hasOwnProperty(d) && d !== '$') output[d] = data[0][d][0]
-      callback(null, output)
-    })
+      for (const d in data[0]) {
+        if (data[0].hasOwnProperty(d) && d !== '$') {
+          output[d] = data[0][d][0]
+        }
+      }
+      return output
   }
 
   /**
    * Get Zone Attributes
-   * @param  {Function} callback (err, data)
    */
-  getZoneAttrs(callback) {
-    log('Sonos.getZoneAttrs(%j, %j)', callback)
+  async getZoneAttrs() {
+    log('Sonos.getZoneAttrs(%j)')
     const action = '"urn:schemas-upnp-org:service:DeviceProperties:1#GetZoneAttributes"'
     const body = '"<u:GetZoneAttributes xmlns:u="urn:schemas-upnp-org:service:DeviceProperties:1"></u:GetZoneAttributes>"'
-    this.request(this.options.endpoints.device, action, body, 'u:GetZoneAttributesResponse', function (err, data) {
-      if (err) return callback(err, data)
-      const output = {}
-      for (const d in data[0]) if (data[0].hasOwnProperty(d) && d !== '$') output[d] = data[0][d][0]
-      callback(null, output)
-    })
+    const data = await this.request(this.options.endpoints.device, action, body, 'u:GetZoneAttributesResponse')
+    const output = {}
+    for (const d in data[0]) {
+      if (data[0].hasOwnProperty(d) && d !== '$') {
+        output[d] = data[0][d][0]
+      }
+    }
+    return output
   }
 
   /**
@@ -765,17 +730,13 @@ export class Sonos {
 
   /**
    * Set Name
-   * @param  {String}   name
-   * @param  {Function} callback (err, data)
    */
-  setName(name: string, callback) {
-    log('Sonos.setName(%j, %j)', name, callback)
-    name = name.replace(/[<&]/g, function (str) { return (str === '&') ? '&amp;' : '&lt;' })
+  setName(name: string) {
+    log('Sonos.setName(%j)', name)
+    name = name.replace(/[<&]/g, (str) => (str === '&') ? '&amp;' : '&lt;')
     const action = '"urn:schemas-upnp-org:service:DeviceProperties:1#SetZoneAttributes"'
     const body = '"<u:SetZoneAttributes xmlns:u="urn:schemas-upnp-org:service:DeviceProperties:1"><DesiredZoneName>' + name + '</DesiredZoneName><DesiredIcon /><DesiredConfiguration /></u:SetZoneAttributes>"'
-    this.request(this.options.endpoints.device, action, body, 'u:SetZoneAttributesResponse', function (err, data) {
-      return callback(err, data)
-    })
+    return this.request(this.options.endpoints.device, action, body, 'u:SetZoneAttributesResponse')
   }
 
   /**
@@ -787,43 +748,36 @@ export class Sonos {
   setPlayMode(playmode: string, callback) {
     log('Sonos.setPlayMode(%j, %j)', playmode, callback)
     const mode = { NORMAL: true, REPEAT_ALL: true, SHUFFLE: true, SHUFFLE_NOREPEAT: true }[playmode.toUpperCase()]
-    if (!mode) return callback(new Error('invalid play mode ' + playmode))
+    if (!mode) {
+      throw new Error('invalid play mode ' + playmode)
+    }
     const action = '"urn:schemas-upnp-org:service:AVTransport:1#SetPlayMode"'
     const body = '<u:SetPlayMode xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID><NewPlayMode>' + playmode.toUpperCase() + '</NewPlayMode></u:SetPlayMode>'
-    this.request(this.options.endpoints.transport, action, body, 'u:SetPlayModeResponse', function (err, data) {
-      return callback(err, data)
-    })
+    return this.request(this.options.endpoints.transport, action, body, 'u:SetPlayModeResponse')
   }
 
   /**
    * Set Volume
    * @param  {String}   volume 0..100
-   * @param  {Function} callback (err, data)
-   * @return {[type]}
    */
-  setVolume(volume, callback) {
-    log('Sonos.setVolume(%j, %j)', volume, callback)
+  setVolume(volume: number) {
+    log('Sonos.setVolume(%j)', volume)
     const action = '"urn:schemas-upnp-org:service:RenderingControl:1#SetVolume"'
     const body = '<u:SetVolume xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1"><InstanceID>0</InstanceID><Channel>Master</Channel><DesiredVolume>' + volume + '</DesiredVolume></u:SetVolume>'
-    this.request(this.options.endpoints.rendering, action, body, 'u:SetVolumeResponse', function (err, data) {
-      return callback(err, data)
-    })
+    return this.request(this.options.endpoints.rendering, action, body, 'u:SetVolumeResponse')
   }
 
   /**
    * Set Muted
-   * @param  {Boolean}  muted
-   * @param  {Function} callback (err, data)
-   * @return {[type]}
    */
-  setMuted(muted: boolean, callback) {
-    log('Sonos.setMuted(%j, %j)', muted, callback)
-    if (typeof muted === 'string') muted = !!parseInt(muted, 10)
+  setMuted(muted: boolean) {
+    log('Sonos.setMuted(%j)')
+    if (typeof muted === 'string') {
+      muted = !!parseInt(muted, 10)
+    }
     const action = '"urn:schemas-upnp-org:service:RenderingControl:1#SetMute"'
     const body = '<u:SetMute xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1"><InstanceID>0</InstanceID><Channel>Master</Channel><DesiredMute>' + (muted ? '1' : '0') + '</DesiredMute></u:SetMute>'
-    this.request(this.options.endpoints.rendering, action, body, 'u:SetMutedResponse', function (err, data) {
-      return callback(err, data)
-    })
+    return this.request(this.options.endpoints.rendering, action, body, 'u:SetMutedResponse')
   }
 
   /**
@@ -858,31 +812,25 @@ export class Sonos {
 
   /**
    * Get Current Playback State
-   * @param  {Function} callback (err, state)
    */
-  getCurrentState(callback) {
-    log('Sonos.currentState(%j)', callback)
+  async getCurrentState() {
+    log('Sonos.currentState(%j)')
     const action = '"urn:schemas-upnp-org:service:AVTransport:1#GetTransportInfo"'
     const body = '<u:GetTransportInfo xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID></u:GetTransportInfo>'
     let state = null
-    return this.request(this.options.endpoints.transport, action, body, 'u:GetTransportInfoResponse', function (err, data) {
-      if (err) {
-        callback(err)
-        return
-      }
-      if (JSON.stringify(data[0].CurrentTransportState) === '["STOPPED"]') {
-        state = 'stopped'
-      } else if (JSON.stringify(data[0].CurrentTransportState) === '["PLAYING"]') {
-        state = 'playing'
-      } else if (JSON.stringify(data[0].CurrentTransportState) === '["PAUSED_PLAYBACK"]') {
-        state = 'paused'
-      } else if (JSON.stringify(data[0].CurrentTransportState) === '["TRANSITIONING"]') {
-        state = 'transitioning'
-      } else if (JSON.stringify(data[0].CurrentTransportState) === '["NO_MEDIA_PRESENT"]') {
-        state = 'no_media'
-      }
-      return callback(err, state)
-    })
+    const data = await this.request(this.options.endpoints.transport, action, body, 'u:GetTransportInfoResponse')
+    if (JSON.stringify(data[0].CurrentTransportState) === '["STOPPED"]') {
+      state = 'stopped'
+    } else if (JSON.stringify(data[0].CurrentTransportState) === '["PLAYING"]') {
+      state = 'playing'
+    } else if (JSON.stringify(data[0].CurrentTransportState) === '["PAUSED_PLAYBACK"]') {
+      state = 'paused'
+    } else if (JSON.stringify(data[0].CurrentTransportState) === '["TRANSITIONING"]') {
+      state = 'transitioning'
+    } else if (JSON.stringify(data[0].CurrentTransportState) === '["NO_MEDIA_PRESENT"]') {
+      state = 'no_media'
+    }
+    return state
   }
 
   /**

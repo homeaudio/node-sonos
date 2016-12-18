@@ -13,6 +13,6 @@ export class ContentDirectory extends Service {
     })
   }
 
-  Browse(options, callback) { this._request('Browse', options, callback) }
+  Browse(options) { return this._request('Browse', options) }
 
 }
