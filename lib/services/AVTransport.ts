@@ -13,37 +13,37 @@ export class AVTransport extends Service {
     })
   }
 
-  SetAVTransportURI(options, callback) { this._request('SetAVTransportURI', options, callback) }
-  AddURIToQueue(options, callback) { this._request('AddURIToQueue', options, callback) }
-  AddMultipleURIsToQueue(options, callback) { this._request('AddMultipleURIsToQueue', options, callback) }
-  ReorderTracksInQueue(options, callback) { this._request('ReorderTracksInQueue', options, callback) }
-  RemoveTrackFromQueue(options, callback) { this._request('RemoveTrackFromQueue', options, callback) }
-  RemoveTrackRangeFromQueue(options, callback) { this._request('RemoveTrackRangeFromQueue', options, callback) }
-  RemoveAllTracksFromQueue(options, callback) { this._request('RemoveAllTracksFromQueue', options, callback) }
-  SaveQueue(options, callback) { this._request('SaveQueue', options, callback) }
-  BackupQueue(options, callback) { this._request('BackupQueue', options, callback) }
-  GetMediaInfo(options, callback) { this._request('GetMediaInfo', options, callback) }
-  GetTransportInfo(options, callback) { this._request('GetTransportInfo', options, callback) }
-  GetPositionInfo(options, callback) { this._request('GetPositionInfo', options, callback) }
-  GetDeviceCapabilities(options, callback) { this._request('GetDeviceCapabilities', options, callback) }
-  GetTransportSettings(options, callback) { this._request('GetTransportSettings', options, callback) }
-  GetCrossfadeMode(options, callback) { this._request('GetCrossfadeMode', options, callback) }
-  Stop(options, callback) { this._request('Stop', options, callback) }
-  Play(options, callback) { this._request('Play', options, callback) }
-  Pause(options, callback) { this._request('Pause', options, callback) }
-  Seek(options, callback) { this._request('Seek', options, callback) }
-  Next(options, callback) { this._request('Next', options, callback) }
-  NextProgrammedRadioTracks(options, callback) { this._request('NextProgrammedRadioTracks', options, callback) }
-  Previous(options, callback) { this._request('Previous', options, callback) }
-  NextSection(options, callback) { this._request('NextSection', options, callback) }
-  PreviousSection(options, callback) { this._request('PreviousSection', options, callback) }
-  SetPlayMode(options, callback) { this._request('SetPlayMode', options, callback) }
-  SetCrossfadeMode(options, callback) { this._request('SetCrossfadeMode', options, callback) }
-  NotifyDeletedURI(options, callback) { this._request('NotifyDeletedURI', options, callback) }
-  GetCurrentTransportActions(options, callback) { this._request('GetCurrentTransportActions', options, callback) }
-  BecomeCoordinatorOfStandaloneGroup(options, callback) { this._request('BecomeCoordinatorOfStandaloneGroup', options, callback) }
-  DelegateGroupCoordinationTo(options, callback) { this._request('DelegateGroupCoordinationTo', options, callback) }
-  BecomeGroupCoordinator(options, callback) { this._request('BecomeGroupCoordinator', options, callback) }
-  BecomeGroupCoordinatorAndSource(options, callback) { this._request('BecomeGroupCoordinatorAndSource', options, callback) }
+  SetAVTransportURI(options) { return this._request('SetAVTransportURI', options) }
+  AddURIToQueue(options) { return this._request('AddURIToQueue', options) }
+  AddMultipleURIsToQueue(options) { return this._request('AddMultipleURIsToQueue', options) }
+  ReorderTracksInQueue(options) { return this._request('ReorderTracksInQueue', options) }
+  RemoveTrackFromQueue(options) { return this._request('RemoveTrackFromQueue', options) }
+  RemoveTrackRangeFromQueue(options) { return this._request('RemoveTrackRangeFromQueue', options) }
+  RemoveAllTracksFromQueue(options) { return this._request('RemoveAllTracksFromQueue', options) }
+  SaveQueue(options) { return this._request('SaveQueue', options) }
+  BackupQueue(options) { return this._request('BackupQueue', options) }
+  GetMediaInfo(options) { return this._request('GetMediaInfo', options) }
+  GetTransportInfo(options) { return this._request('GetTransportInfo', options) }
+  GetPositionInfo(options) { return this._request('GetPositionInfo', options) }
+  GetDeviceCapabilities(options) { return this._request('GetDeviceCapabilities', options) }
+  GetTransportSettings(options) { return this._request('GetTransportSettings', options) }
+  GetCrossfadeMode(options) { return this._request('GetCrossfadeMode', options) }
+  Stop(options) { return this._request('Stop', options) }
+  Play(options) { return this._request('Play', options) }
+  Pause(options) { return this._request('Pause', options) }
+  Seek(options) { return this._request('Seek', options) }
+  Next(options) { return this._request('Next', options) }
+  NextProgrammedRadioTracks(options) { return this._request('NextProgrammedRadioTracks', options) }
+  Previous(options) { return this._request('Previous', options) }
+  NextSection(options) { return this._request('NextSection', options) }
+  PreviousSection(options) { return this._request('PreviousSection', options) }
+  SetPlayMode(options) { return this._request('SetPlayMode', options) }
+  SetCrossfadeMode(options) { return this._request('SetCrossfadeMode', options) }
+  NotifyDeletedURI(options) { return this._request('NotifyDeletedURI', options) }
+  GetCurrentTransportActions(options) { return this._request('GetCurrentTransportActions', options) }
+  BecomeCoordinatorOfStandaloneGroup(options) { return this._request('BecomeCoordinatorOfStandaloneGroup', options) }
+  DelegateGroupCoordinationTo(options) { return this._request('DelegateGroupCoordinationTo', options) }
+  BecomeGroupCoordinator(options) { return this._request('BecomeGroupCoordinator', options) }
+  BecomeGroupCoordinatorAndSource(options) { return this._request('BecomeGroupCoordinatorAndSource', options) }
 
 }

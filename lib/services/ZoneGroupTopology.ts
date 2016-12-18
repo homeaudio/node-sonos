@@ -13,12 +13,12 @@ export class ZoneGroupTopology extends Service {
     })
   }
 
-  CheckForUpdate(options, callback) { this._request('CheckForUpdate', options, callback) }
-  BeginSoftwareUpdate(options, callback) { this._request('BeginSoftwareUpdate', options, callback) }
-  ReportUnresponsiveDevice(options, callback) { this._request('ReportUnresponsiveDevice', options, callback) }
-  ReportAlarmStartedRunning(options, callback) { this._request('ReportAlarmStartedRunning', options, callback) }
-  SubmitDiagnostics(options, callback) { this._request('SubmitDiagnostics', options, callback) }
-  RegisterMobileDevice(options, callback) { this._request('RegisterMobileDevice', options, callback) }
-  GetZoneGroupAttributes(options, callback) { this._request('GetZoneGroupAttributes', options, callback) }
+  CheckForUpdate(options) { return this._request('CheckForUpdate', options) }
+  BeginSoftwareUpdate(options) { return this._request('BeginSoftwareUpdate', options) }
+  ReportUnresponsiveDevice(options) { return this._request('ReportUnresponsiveDevice', options) }
+  ReportAlarmStartedRunning(options) { return this._request('ReportAlarmStartedRunning', options) }
+  SubmitDiagnostics(options) { return this._request('SubmitDiagnostics', options) }
+  RegisterMobileDevice(options) { return this._request('RegisterMobileDevice', options) }
+  GetZoneGroupAttributes(options) { return this._request('GetZoneGroupAttributes', options) }
 
 }

@@ -13,12 +13,12 @@ export class AudioIn extends Service {
     })
   }
 
-  StartTransmissionToGroup(options, callback) { this._request('StartTransmissionToGroup', options, callback) }
-  StopTransmissionToGroup(options, callback) { this._request('StopTransmissionToGroup', options, callback) }
-  SetAudioInputAttributes(options, callback) { this._request('SetAudioInputAttributes', options, callback) }
-  GetAudioInputAttributes(options, callback) { this._request('GetAudioInputAttributes', options, callback) }
-  SetLineInLevel(options, callback) { this._request('SetLineInLevel', options, callback) }
-  GetLineInLevel(options, callback) { this._request('GetLineInLevel', options, callback) }
-  SelectAudio(options, callback) { this._request('SelectAudio', options, callback) }
+  StartTransmissionToGroup(options) { return this._request('StartTransmissionToGroup', options) }
+  StopTransmissionToGroup(options) { return this._request('StopTransmissionToGroup', options) }
+  SetAudioInputAttributes(options) { return this._request('SetAudioInputAttributes', options) }
+  GetAudioInputAttributes(options) { return this._request('GetAudioInputAttributes', options) }
+  SetLineInLevel(options) { return this._request('SetLineInLevel', options) }
+  GetLineInLevel(options) { return this._request('GetLineInLevel', options) }
+  SelectAudio(options) { return this._request('SelectAudio', options) }
 
 }

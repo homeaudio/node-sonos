@@ -13,28 +13,28 @@ export class DeviceProperties extends Service {
     })
   }
 
-  SetLEDState(options, callback) { this._request('SetLEDState', options, callback) }
-  GetLEDState(options, callback) { this._request('GetLEDState', options, callback) }
-  SetInvisible(options, callback) { this._request('SetInvisible', options, callback) }
-  GetInvisible(options, callback) { this._request('GetInvisible', options, callback) }
-  AddBondedZones(options, callback) { this._request('AddBondedZones', options, callback) }
-  RemoveBondedZones(options, callback) { this._request('RemoveBondedZones', options, callback) }
-  CreateStereoPair(options, callback) { this._request('CreateStereoPair', options, callback) }
-  SeparateStereoPair(options, callback) { this._request('SeparateStereoPair', options, callback) }
-  SetZoneAttributes(options, callback) { this._request('SetZoneAttributes', options, callback) }
-  GetZoneAttributes(options, callback) { this._request('GetZoneAttributes', options, callback) }
-  GetHouseholdID(options, callback) { this._request('GetHouseholdID', options, callback) }
-  GetZoneInfo(options, callback) { this._request('GetZoneInfo', options, callback) }
-  SetAutoplayLinkedZones(options, callback) { this._request('SetAutoplayLinkedZones', options, callback) }
-  GetAutoplayLinkedZones(options, callback) { this._request('GetAutoplayLinkedZones', options, callback) }
-  SetAutoplayRoomUUID(options, callback) { this._request('SetAutoplayRoomUUID', options, callback) }
-  GetAutoplayRoomUUID(options, callback) { this._request('GetAutoplayRoomUUID', options, callback) }
-  SetAutoplayVolume(options, callback) { this._request('SetAutoplayVolume', options, callback) }
-  GetAutoplayVolume(options, callback) { this._request('GetAutoplayVolume', options, callback) }
-  ImportSetting(options, callback) { this._request('ImportSetting', options, callback) }
-  SetUseAutoplayVolume(options, callback) { this._request('SetUseAutoplayVolume', options, callback) }
-  GetUseAutoplayVolume(options, callback) { this._request('GetUseAutoplayVolume', options, callback) }
-  AddHTSatellite(options, callback) { this._request('AddHTSatellite', options, callback) }
-  RemoveHTSatellite(options, callback) { this._request('RemoveHTSatellite', options, callback) }
+  SetLEDState(options) { return this._request('SetLEDState', options) }
+  GetLEDState(options) { return this._request('GetLEDState', options) }
+  SetInvisible(options) { return this._request('SetInvisible', options) }
+  GetInvisible(options) { return this._request('GetInvisible', options) }
+  AddBondedZones(options) { return this._request('AddBondedZones', options) }
+  RemoveBondedZones(options) { return this._request('RemoveBondedZones', options) }
+  CreateStereoPair(options) { return this._request('CreateStereoPair', options) }
+  SeparateStereoPair(options) { return this._request('SeparateStereoPair', options) }
+  SetZoneAttributes(options) { return this._request('SetZoneAttributes', options) }
+  GetZoneAttributes(options) { return this._request('GetZoneAttributes', options) }
+  GetHouseholdID(options) { return this._request('GetHouseholdID', options) }
+  GetZoneInfo(options) { return this._request('GetZoneInfo', options) }
+  SetAutoplayLinkedZones(options) { return this._request('SetAutoplayLinkedZones', options) }
+  GetAutoplayLinkedZones(options) { return this._request('GetAutoplayLinkedZones', options) }
+  SetAutoplayRoomUUID(options) { return this._request('SetAutoplayRoomUUID', options) }
+  GetAutoplayRoomUUID(options) { return this._request('GetAutoplayRoomUUID', options) }
+  SetAutoplayVolume(options) { return this._request('SetAutoplayVolume', options) }
+  GetAutoplayVolume(options) { return this._request('GetAutoplayVolume', options) }
+  ImportSetting(options) { return this._request('ImportSetting', options) }
+  SetUseAutoplayVolume(options) { return this._request('SetUseAutoplayVolume', options) }
+  GetUseAutoplayVolume(options) { return this._request('GetUseAutoplayVolume', options) }
+  AddHTSatellite(options) { return this._request('AddHTSatellite', options) }
+  RemoveHTSatellite(options) { return this._request('RemoveHTSatellite', options) }
 
 }

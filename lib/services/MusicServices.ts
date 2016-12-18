@@ -13,8 +13,8 @@ export class MusicServices extends Service {
     })
   }
 
-  GetSessionId(options, callback) { this._request('GetSessionId', options, callback) }
-  ListAvailableServices(options, callback) { this._request('ListAvailableServices', options, callback) }
-  UpdateAvailableServices(options, callback) { this._request('UpdateAvailableServices', options, callback) }
+  GetSessionId(options) { return this._request('GetSessionId', options) }
+  ListAvailableServices(options) { return this._request('ListAvailableServices', options) }
+  UpdateAvailableServices(options) { return this._request('UpdateAvailableServices', options) }
 
 }

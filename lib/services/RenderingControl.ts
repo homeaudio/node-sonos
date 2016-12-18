@@ -13,7 +13,7 @@ export class RenderingControl extends Service {
     })
   }
 
-  GetVolume(options, callback) { this._request('GetVolume', options, callback) }
-  SetVolume(options, callback) { this._request('SetVolume', options, callback) }
+  GetVolume(options) { return this._request('GetVolume', options) }
+  SetVolume(options) { return this._request('SetVolume', options) }
 
 }

@@ -13,8 +13,8 @@ export class GroupManagement extends Service {
     })
   }
 
-  AddMember(options, callback) { this._request('AddMember', options, callback) }
-  RemoveMember(options, callback) { this._request('RemoveMember', options, callback) }
-  ReportTrackBufferingResult(options, callback) { this._request('ReportTrackBufferingResult', options, callback) }
+  AddMember(options) { return this._request('AddMember', options) }
+  RemoveMember(options) { return this._request('RemoveMember', options) }
+  ReportTrackBufferingResult(options) { return this._request('ReportTrackBufferingResult', options) }
 
 }

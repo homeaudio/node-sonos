@@ -13,22 +13,22 @@ export class SystemProperties extends Service {
     })
   }
 
-  SetString(options, callback) { this._request('SetString', options, callback) }
-  SetStringX(options, callback) { this._request('SetStringX', options, callback) }
-  GetString(options, callback) { this._request('GetString', options, callback) }
-  GetStringX(options, callback) { this._request('GetStringX', options, callback) }
-  Remove(options, callback) { this._request('Remove', options, callback) }
-  RemoveX(options, callback) { this._request('RemoveX', options, callback) }
-  GetWebCode(options, callback) { this._request('GetWebCode', options, callback) }
-  ProvisionTrialAccount(options, callback) { this._request('ProvisionTrialAccount', options, callback) }
-  ProvisionCredentialedTrialAccountX(options, callback) { this._request('ProvisionCredentialedTrialAccountX', options, callback) }
-  MigrateTrialAccountX(options, callback) { this._request('MigrateTrialAccountX', options, callback) }
-  AddAccountX(options, callback) { this._request('AddAccountX', options, callback) }
-  AddAccountWithCredentialsX(options, callback) { this._request('AddAccountWithCredentialsX', options, callback) }
-  RemoveAccount(options, callback) { this._request('RemoveAccount', options, callback) }
-  EditAccountPasswordX(options, callback) { this._request('EditAccountPasswordX', options, callback) }
-  EditAccountMd(options, callback) { this._request('EditAccountMd', options, callback) }
-  DoPostUpdateTasks(options, callback) { this._request('DoPostUpdateTasks', options, callback) }
-  ResetThirdPartyCredentials(options, callback) { this._request('ResetThirdPartyCredentials', options, callback) }
+  SetString(options) { return this._request('SetString', options) }
+  SetStringX(options) { return this._request('SetStringX', options) }
+  GetString(options) { return this._request('GetString', options) }
+  GetStringX(options) { return this._request('GetStringX', options) }
+  Remove(options) { return this._request('Remove', options) }
+  RemoveX(options) { return this._request('RemoveX', options) }
+  GetWebCode(options) { return this._request('GetWebCode', options) }
+  ProvisionTrialAccount(options) { return this._request('ProvisionTrialAccount', options) }
+  ProvisionCredentialedTrialAccountX(options) { return this._request('ProvisionCredentialedTrialAccountX', options) }
+  MigrateTrialAccountX(options) { return this._request('MigrateTrialAccountX', options) }
+  AddAccountX(options) { return this._request('AddAccountX', options) }
+  AddAccountWithCredentialsX(options) { return this._request('AddAccountWithCredentialsX', options) }
+  RemoveAccount(options) { return this._request('RemoveAccount', options) }
+  EditAccountPasswordX(options) { return this._request('EditAccountPasswordX', options) }
+  EditAccountMd(options) { return this._request('EditAccountMd', options) }
+  DoPostUpdateTasks(options) { return this._request('DoPostUpdateTasks', options) }
+  ResetThirdPartyCredentials(options) { return this._request('ResetThirdPartyCredentials', options) }
 
 }
