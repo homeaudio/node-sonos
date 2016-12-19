@@ -2,7 +2,8 @@
   "name": "sonos",
   "version": "0.12.1",
   "description": "Node.js Sonos Interface",
-  "main": "index.js",
+  "main": "lib/sonos.js",
+  "types": "lib/sonos.ts",
   "scripts": {
     "build": "tsc",
     "watch": "tsc -w",
@@ -31,15 +32,18 @@
     {
       "name": "Stephen Wan",
       "email": "stephen@stephenwan.net"
+    },
+    {
+      "name": "James Booth",
+      "email": "jabooth@gmail.com"
     }
   ],
   "license": "MIT",
   "dependencies": {
-    "debug": "^2.3.3",
+    "debug": "^2.4.5",
     "ip": "1.1.4",
     "request": "^2.79.0",
     "underscore": "1.8.3",
-    "upnp-client": "0.0.1",
     "xml2js": "0.4.17"
   },
   "bugs": {
@@ -53,7 +57,7 @@
     "@types/underscore": "^1.7.36",
     "@types/xml2js": "0.0.32",
     "mocha": "^3.2.0",
-    "standard": "*",
+    "tslint": "^4.1.0",
     "typescript": "^2.1.4"
   }
 }

@@ -5,36 +5,59 @@ const TRANSPORT_ENDPOINT = '/MediaRenderer/AVTransport/Control'
 const RENDERING_ENDPOINT = '/MediaRenderer/RenderingControl/Control'
 const DEVICE_ENDPOINT = '/DeviceProperties/Control'
 
+
+type SearchType = "artists"
+                | "albumArtists"
+                | "albums"
+                | "genres"
+                | "composers"
+                | "tracks"
+                | "playlists"
+                | "sonos_playlists"
+                | "share"
+
+const SEARCH_TYPES_TO_SPECIFIER: {[P in SearchType]: string } =  {
+  artists: 'A:ARTIST',
+  albumArtists: 'A:ALBUMARTIST',
+  albums: 'A:ALBUM',
+  genres: 'A:GENRE',
+  composers: 'A:COMPOSER',
+  tracks: 'A:TRACKS',
+  playlists: 'A:PLAYLISTS',
+  sonos_playlists: 'SQ:',
+  share: 'S:',
+}
+
 /**
  * Dependencies
  */
-import * as util from 'util'
-import { EventEmitter } from 'events'
 import * as dgram from 'dgram'
-import * as request from 'request'
-import * as xml2js from 'xml2js'
+import { EventEmitter } from 'events'
+import * as util from 'util'
+
 import * as debug from 'debug'
+import * as fetch from 'node-fetch'
 import * as _ from 'underscore'
+import * as xml2js from 'xml2js'
 
 const log = debug('sonos')
-
 
 /**
  * Option Interfaces
  */
 interface SearchMusicLibraryOptions {
-  start?: number
-  total?: number
+  start?: string
+  total?: string
 }
 
 function parseXML(str: string) {
   return new Promise<{[key: string]: string}>((resolve, reject) => {
     const parser = new xml2js.Parser()
-    parser.parseString(str, (err, didl) => {
+    parser.parseString(str, (err, obj) => {
       if (err) {
         reject(err)
       }
-      resolve(didl)
+      resolve(obj)
     })
   })
 }
@@ -42,7 +65,7 @@ function parseXML(str: string) {
 /**
  * Services
  */
-import { ContentDirectory } from './services/ContentDirectory'
+import { ContentDirectory, ContentDirectoryBrowseOptions } from './services/ContentDirectory'
 
 /**
  * Helpers
@@ -65,44 +88,48 @@ function htmlEntities(str: string) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
+function isSpotifyUri(uri: string) {
+  return uri.startsWith('spotify')
+}
+
 /**
  * Creates object with uri and metadata from Spotify track uri
  */
 function optionsFromSpotifyUri(uri: string, title?: string) {
   const spotifyIds = uri.split(':')
   if (Array.isArray(spotifyIds) && spotifyIds.length < 3) {
-    return uri
+    return { uri }
   }
   const spotifyUri = uri.replace(/:/g, '%3a')
   const meta = '<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:r="urn:schemas-rinconnetworks-com:metadata-1-0/" xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/"><item id="##SPOTIFYURI##" restricted="true"><dc:title>##RESOURCETITLE##</dc:title><upnp:class>##SPOTIFYTYPE##</upnp:class><desc id="cdudn" nameSpace="urn:schemas-rinconnetworks-com:metadata-1-0/">SA_RINCON3079_X_#Svc3079-0-Token</desc></item></DIDL-Lite>'
   if (uri.startsWith('spotify:track:')) {
     return {
       uri: spotifyUri,
-      metadata: meta.replace('##SPOTIFYURI##', '00032020' + spotifyUri).replace('##RESOURCETITLE##', '').replace('##SPOTIFYTYPE##', 'object.item.audioItem.musicTrack')
+      metadata: meta.replace('##SPOTIFYURI##', '00032020' + spotifyUri).replace('##RESOURCETITLE##', '').replace('##SPOTIFYTYPE##', 'object.item.audioItem.musicTrack'),
     }
   } else if (uri.startsWith('spotify:album:')) {
     return {
       uri: 'x-rincon-cpcontainer:0004206c' + spotifyUri,
-      metadata: meta.replace('##SPOTIFYURI##', '0004206c' + spotifyUri).replace('##RESOURCETITLE##', '').replace('##SPOTIFYTYPE##', 'object.container.album.musicAlbum')
+      metadata: meta.replace('##SPOTIFYURI##', '0004206c' + spotifyUri).replace('##RESOURCETITLE##', '').replace('##SPOTIFYTYPE##', 'object.container.album.musicAlbum'),
     }
   } else if (uri.startsWith('spotify:artistTopTracks:')) {
     return {
       uri: 'x-rincon-cpcontainer:000e206c' + spotifyUri,
-      metadata: meta.replace('##SPOTIFYURI##', '000e206c' + spotifyUri).replace('##RESOURCETITLE##', '').replace('##SPOTIFYTYPE##', 'object.container.playlistContainer')
+      metadata: meta.replace('##SPOTIFYURI##', '000e206c' + spotifyUri).replace('##RESOURCETITLE##', '').replace('##SPOTIFYTYPE##', 'object.container.playlistContainer'),
     }
   } else if (uri.startsWith('spotify:user:')) {
     return {
       uri: 'x-rincon-cpcontainer:0006206c' + spotifyUri,
-      metadata: meta.replace('##SPOTIFYURI##', '0006206c' + spotifyUri).replace('##RESOURCETITLE##', '').replace('##SPOTIFYTYPE##', 'object.container.playlistContainer')
+      metadata: meta.replace('##SPOTIFYURI##', '0006206c' + spotifyUri).replace('##RESOURCETITLE##', '').replace('##SPOTIFYTYPE##', 'object.container.playlistContainer'),
     }
   } else if (uri.startsWith('spotify:artistRadio:')) {
     const radioTitle = (title !== undefined) ? title : 'Artist Radio'
     return {
       uri: spotifyUri,
-      metadata: '<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:r="urn:schemas-rinconnetworks-com:metadata-1-0/" xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/"><item id="000c206c' + spotifyUri + '" restricted="true"><dc:title>' + radioTitle + '</dc:title><upnp:class>object.item.audioItem.audioBroadcast.#artistRadio</upnp:class><desc id="cdudn" nameSpace="urn:schemas-rinconnetworks-com:metadata-1-0/">SA_RINCON3079_X_#Svc3079-0-Token</desc></item></DIDL-Lite>'
+      metadata: '<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:r="urn:schemas-rinconnetworks-com:metadata-1-0/" xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/"><item id="000c206c' + spotifyUri + '" restricted="true"><dc:title>' + radioTitle + '</dc:title><upnp:class>object.item.audioItem.audioBroadcast.#artistRadio</upnp:class><desc id="cdudn" nameSpace="urn:schemas-rinconnetworks-com:metadata-1-0/">SA_RINCON3079_X_#Svc3079-0-Token</desc></item></DIDL-Lite>',
     }
   } else {
-    return uri
+    return { uri }
   }
 }
 
@@ -110,13 +137,15 @@ function optionsFromSpotifyUri(uri: string, title?: string) {
  * Parse DIDL into track structure
  */
 function parseDIDL(didl: string) {
-  if ((!didl) || (!didl['DIDL-Lite']) || (!util.isArray(didl['DIDL-Lite'].item)) || (!didl['DIDL-Lite'].item[0])) return {}
+  if ((!didl) || (!didl['DIDL-Lite']) || (!util.isArray(didl['DIDL-Lite'].item)) || (!didl['DIDL-Lite'].item[0])) {
+    return {}
+  }
   const item = didl['DIDL-Lite'].item[0]
   return {
     title: util.isArray(item['dc:title']) ? item['dc:title'][0] : null,
     artist: util.isArray(item['dc:creator']) ? item['dc:creator'][0] : null,
     album: util.isArray(item['upnp:album']) ? item['upnp:album'][0] : null,
-    albumArtURI: util.isArray(item['upnp:albumArtURI']) ? item['upnp:albumArtURI'][0] : null
+    albumArtURI: util.isArray(item['upnp:albumArtURI']) ? item['upnp:albumArtURI'][0] : null,
   }
 }
 
@@ -143,10 +172,18 @@ export class Sonos {
     this.host = host
     this.port = port || 1400
     this.options = options || {}
-    if (!this.options.endpoints) this.options.endpoints = {}
-    if (!this.options.endpoints.transport) this.options.endpoints.transport = TRANSPORT_ENDPOINT
-    if (!this.options.endpoints.rendering) this.options.endpoints.rendering = RENDERING_ENDPOINT
-    if (!this.options.endpoints.device) this.options.endpoints.device = DEVICE_ENDPOINT
+    if (!this.options.endpoints) {
+      this.options.endpoints = {}
+    }
+    if (!this.options.endpoints.transport) {
+      this.options.endpoints.transport = TRANSPORT_ENDPOINT
+    }
+    if (!this.options.endpoints.rendering) {
+      this.options.endpoints.rendering = RENDERING_ENDPOINT
+    }
+    if (!this.options.endpoints.device) {
+      this.options.endpoints.device = DEVICE_ENDPOINT
+    }
   }
 
   /**
@@ -156,34 +193,28 @@ export class Sonos {
    * @param  {String}   body
    * @param  {String}   responseTag Expected Response Container XML Tag
    */
-  request(endpoint: string, action: string, body: string, responseTag: string) {
+  async request(endpoint: string, action: string, body: string, responseTag: string) {
     log('Sonos.request(%j, %j, %j, %j, %j)', endpoint, action, body, responseTag)
-    return new Promise<{[key: string]: any}>((resolve, reject) => {
-      request({
-        uri: 'http://' + this.host + ':' + this.port + endpoint,
+    const res = await fetch('http://' + this.host + ':' + this.port + endpoint,
+      {
         method: 'POST',
         headers: {
-          'SOAPAction': action,
-          'Content-type': 'text/xml; charset=utf8'
+          SOAPAction: action,
+          'Content-type': 'text/xml; charset=utf8',
         },
-        body: withinEnvelope(body)
-      }, function (err, res, body) {
-        if (err) return reject(err)
-        if (res.statusCode !== 200) {
-          return reject(new Error('HTTP response code ' + res.statusCode + ' for ' + action))
-        }
-        (new xml2js.Parser()).parseString(body, function (err, json) {
-          if (err) return reject(err)
-          if ((!json) || (!json['s:Envelope']) || (!util.isArray(json['s:Envelope']['s:Body']))) {
-            return reject(new Error('Invalid response for ' + action + ': ' + JSON.stringify(json)))
-          }
-          if (typeof json['s:Envelope']['s:Body'][0]['s:Fault'] !== 'undefined') {
-            return reject(json['s:Envelope']['s:Body'][0]['s:Fault'])
-          }
-          return resolve(json['s:Envelope']['s:Body'][0][responseTag])
-        })
+        body: withinEnvelope(body),
       })
-    })
+    if (res.statusCode !== 200) {
+      throw new Error('HTTP response code ' + res.statusCode + ' for ' + action)
+    }
+    const json = await parseXML(res.body)
+    if ((!json) || (!json['s:Envelope']) || (!util.isArray(json['s:Envelope']['s:Body']))) {
+      throw new Error('Invalid response for ' + action + ': ' + JSON.stringify(json))
+    }
+    if (typeof json['s:Envelope']['s:Body'][0]['s:Fault'] !== 'undefined') {
+      throw new Error(json['s:Envelope']['s:Body'][0]['s:Fault'])
+    }
+    return json['s:Envelope']['s:Body'][0][responseTag]
   }
 
   transportRequest(name: string, bodyContent= '') {
@@ -197,10 +228,7 @@ export class Sonos {
     if (data[0].$['xmlns:u'] === 'urn:schemas-upnp-org:service:AVTransport:1') {
       return true
     } else {
-      throw new Error({
-        err,
-        data,
-      })
+      throw new Error({ err, data })
     }
   }
 
@@ -226,53 +254,59 @@ export class Sonos {
     return this.searchMusicLibrary(searchType, null, options)
   }
 
+
+  async browseContentDirectory(options: Partial<ContentDirectoryBrowseOptions>) {
+    const defaultOptions: ContentDirectoryBrowseOptions = {
+      BrowseFlag: 'BrowseDirectChildren',
+      Filter: '*',
+      StartingIndex: '0',
+      RequestedCount: '100',
+      SortCriteria: '',
+      ObjectID: '',
+    }
+    const contentDirectory = new ContentDirectory(this.host, this.port)
+    const data = await contentDirectory.Browse({...defaultOptions, ...options})
+    const didl = await parseXML(data['Result'])
+    if (!didl['DIDL-Lite']) {
+      throw new Error('Cannot parse DIDTL result')
+    }
+    return didl['DIDL-Lite']
+  }
+
   /**
    * Get Music Library Information
    * @param  {String}   searchType  Choice - artists, albumArtists, albums, genres, composers, tracks, playlists, share
    * @param  {String}   searchTerm  Optional - search term to search for
    * @param  {Object}   options     Optional - default {start: 0, total: 100}
-   * @param  {Function} callback (err, result) result - {returned: {String}, total: {String}, items:[{title:{String}, uri: {String}}]}
    */
-  async searchMusicLibrary(searchType, searchTerm: string | null, options: SearchMusicLibraryOptions) {
+  async searchMusicLibrary(searchType: SearchType,
+                           searchTerm: string | null, options: SearchMusicLibraryOptions) {
 
-    let searches = {
-      'artists': 'A:ARTIST',
-      'albumArtists': 'A:ALBUMARTIST',
-      'albums': 'A:ALBUM',
-      'genres': 'A:GENRE',
-      'composers': 'A:COMPOSER',
-      'tracks': 'A:TRACKS',
-      'playlists': 'A:PLAYLISTS',
-      'sonos_playlists': 'SQ:',
-      'share': 'S:'
-    }
-    const defaultOptions = {
+    const browseOptions: Partial<ContentDirectoryBrowseOptions> = {
       BrowseFlag: 'BrowseDirectChildren',
       Filter: '*',
       StartingIndex: '0',
       RequestedCount: '100',
-      SortCriteria: ''
+      SortCriteria: '',
+      ObjectID: '',
     }
-    searches = searches[searchType]
 
+    let searchSpecifier = SEARCH_TYPES_TO_SPECIFIER[searchType]
     const opensearch = (!searchTerm) || (searchTerm === '')
     if (!opensearch) {
-      searches = searches.concat(':' + searchTerm)
+      searchSpecifier = searchSpecifier.concat(':' + searchTerm)
+    }
+    browseOptions.ObjectID = searchSpecifier
+
+    if (options.start !== undefined) {
+      browseOptions.StartingIndex = options.start
     }
 
-    let opts = {
-      ObjectID: searches
+    if (options.total !== undefined) {
+      browseOptions.RequestedCount = options.total
     }
-    if (options.start !== undefined) opts.StartingIndex = options.start
-    if (options.total !== undefined) opts.RequestedCount = options.total
-    opts = _.extend(defaultOptions, opts)
-    const contentDirectory = new ContentDirectory(this.host, this.port)
-    const data = await contentDirectory.Browse(opts)
-    const didl = await parseXML(data['Result'])
-    if ((!didl) || (!didl['DIDL-Lite'])) {
-      throw new Error('Cannot parse DIDTL result')
-    }
-    const resultcontainer: any[] = opensearch ? didl['DIDL-Lite']['container'] : didl['DIDL-Lite']['item']
+    const data = this.browseContentDirectory(browseOptions)
+    const resultcontainer: any[] = opensearch ? data['container'] : data['item']
     if (!util.isArray(resultcontainer)) {
       throw new Error('Cannot parse DIDTL result')
     }
@@ -287,17 +321,17 @@ export class Sonos {
         }
       }
       return {
-        'title': util.isArray(item['dc:title']) ? item['dc:title'][0] : null,
-        'artist': util.isArray(item['dc:creator']) ? item['dc:creator'][0] : null,
-        'albumArtURL': albumArtURL,
-        'album': util.isArray(item['upnp:album']) ? item['upnp:album'][0] : null,
-        'uri': util.isArray(item.res) ? item.res[0]._ : null
+        title: util.isArray(item['dc:title']) ? item['dc:title'][0] : null,
+        artist: util.isArray(item['dc:creator']) ? item['dc:creator'][0] : null,
+        albumArtURL,
+        album: util.isArray(item['upnp:album']) ? item['upnp:album'][0] : null,
+        uri: util.isArray(item.res) ? item.res[0]._ : null,
       }
     })
     return {
       returned: data['NumberReturned'],
       total: data['TotalMatches'],
-      items
+      items,
     }
   }
 
@@ -361,24 +395,17 @@ export class Sonos {
    * Resumes Queue or Plays Provided URI
    * @param  {String|Object}   uri      Optional - URI to a Audio Stream or Object with play options
    */
-  async play(uri?: string | Object) {
-    log('Sonos.play(%j)', uri)
-    if (typeof uri === 'string') {
-      uri = optionsFromSpotifyUri(uri)
-    }
-    const options = (typeof uri === 'object' ? uri : {})
-    if (typeof uri === 'object') {
-      options.uri = uri.uri
-      options.metadata = uri.metadata
-    } else {
-      options.uri = (typeof uri === 'string' ? uri : undefined)
-    }
-    if (options.uri) {
-      const queueResult = await this.queue({
-        uri: options.uri,
-        metadata: options.metadata
-      })
-      if (!queueResult || queueResult.length < 0 || !queueResult[0].FirstTrackNumberEnqueued) {
+  async play(uri?: string, metadata = '') {
+    log('Sonos.play(%j, %j)', uri, metadata)
+    if (uri) {
+      // check if it's a spotify uri
+      let queueResult
+      if (isSpotifyUri(uri)) {
+        queueResult = await this.queue(optionsFromSpotifyUri(uri))
+      } else {
+        queueResult = await this.queue({ uri, metadata })
+      }
+      if (queueResult.length < 0 || !queueResult[0].FirstTrackNumberEnqueued) {
         // TODO is this error accurate?
         throw new Error('Queuing was unsucessful')
       }
@@ -492,19 +519,12 @@ export class Sonos {
 
   /**
    * Queue a Song Next
-   * @param  {String|Object}   uri      URI to Audio Stream or Object containing options (uri, metadata)
+   * @param   uri      URI to Audio Stream
+   * @param   metadata      optional metadata about the audio stream
    */
-  queueNext(uri) {
-    log('Sonos.queueNext(%j, %j)', uri, callback)
-    var options = (typeof uri === 'object' ? uri : { metadata: '' })
-    if (typeof uri === 'object') {
-      options.metadata = uri.metadata || ''
-      options.metadata = htmlEntities(options.metadata)
-      options.uri = uri.uri
-    } else {
-      options.uri = uri
-    }
-    const bodyContent = '<CurrentURI>' + options.uri + '</CurrentURI><CurrentURIMetaData>' + options.metadata + '</CurrentURIMetaData></u:SetAVTransportURI>'
+  queueNext(uri: string, metadata = '') {
+    log(`Sonos.queueNext(${uri}, ${metadata})`)
+    const bodyContent = `<CurrentURI>${uri}</CurrentURI><CurrentURIMetaData>${htmlEntities(metadata)}</CurrentURIMetaData></u:SetAVTransportURI>`
     return this.transportRequest('SetAVTransportURI', bodyContent)
   }
 
@@ -514,18 +534,14 @@ export class Sonos {
    * @param  {Number}   positionInQueue Position in queue at which to add song (optional, indexed from 1,
    *                                    defaults to end of queue, 0 to explicitly set end of queue)
    */
-  queue(uri, positionInQueue = 0) {
-    log('Sonos.queue(%j, %j)', uri, positionInQueue)
-    if (typeof uri === 'string') uri = optionsFromSpotifyUri(uri)
-    var options = (typeof uri === 'object' ? uri : { metadata: '' })
-    if (typeof uri === 'object') {
-      options.metadata = uri.metadata || ''
-      options.metadata = htmlEntities(options.metadata)
-      options.uri = uri.uri
-    } else {
-      options.uri = uri
+  queue(options: { uri: string, metadata?: string, positionInQueue?: number }) {
+    log('Sonos.queue(%j)', options)
+    const defaultOptions = {
+      metadata: '',
+      positionInQueue: 0,
     }
-    const bodyContent = '<EnqueuedURI>' + options.uri + '</EnqueuedURI><EnqueuedURIMetaData>' + options.metadata + '</EnqueuedURIMetaData><DesiredFirstTrackNumberEnqueued>' + positionInQueue + '</DesiredFirstTrackNumberEnqueued><EnqueueAsNext>1</EnqueueAsNext>'
+    options = { ...defaultOptions, ...options }
+    const bodyContent = '<EnqueuedURI>' + options.uri + '</EnqueuedURI><EnqueuedURIMetaData>' + options.metadata + '</EnqueuedURIMetaData><DesiredFirstTrackNumberEnqueued>' + options.positionInQueue + '</DesiredFirstTrackNumberEnqueued><EnqueueAsNext>1</EnqueueAsNext>'
     return this.transportRequest('AddURIToQueue', bodyContent)
   }
 
@@ -591,23 +607,21 @@ export class Sonos {
 
   /**
    * Get Information provided by /xml/device_description.xml
-   * @param  {Function} callback (err, info)
    */
-  deviceDescription(callback) {
-    request({
-      uri: 'http://' + this.host + ':' + this.port + '/xml/device_description.xml'
-    }, function (err, res, body) {
-      if (err) return callback(err)
-      if (res.statusCode !== 200) {
-        return callback(new Error('non 200 errorCode'))
+  async deviceDescription() {
+    log('Sonos.deviceDescription()')
+    const res = await fetch('http://' + this.host + ':' + this.port + '/xml/device_description.xml')
+    if (res.statusCode !== 200) {
+      throw new Error('Non-200 response code')
+    }
+    const json = await parseXML(res.body)
+    const output = {}
+    for (const d in json.root.device[0]) {
+      if (json.root.device[0].hasOwnProperty(d)) {
+        output[d] = json.root.device[0][d][0]
       }
-      (new xml2js.Parser()).parseString(body, function (err, json) {
-        if (err) return callback(err)
-        const output = {}
-        for (const d in json.root.device[0]) if (json.root.device[0].hasOwnProperty(d)) output[d] = json.root.device[0][d][0]
-        callback(null, output)
-      })
-    })
+    }
+    return output
   }
 
   /**
@@ -624,7 +638,7 @@ export class Sonos {
    * Set Play Mode
    * @param  {String} playmode
    */
-  setPlayMode(playmode: string) {
+  setPlayMode(playmode: 'NORMAL' | 'REPEAT_ALL' | 'SHUFFLE' | 'SHUFFLE_NOREPEAT') {
     log('Sonos.setPlayMode(%j)', playmode)
     const mode = { NORMAL: true, REPEAT_ALL: true, SHUFFLE: true, SHUFFLE_NOREPEAT: true }[playmode.toUpperCase()]
     if (!mode) {
@@ -654,32 +668,27 @@ export class Sonos {
 
   /**
    * Get Zones in contact with current Zone with Group Data
-   * @param  {Function} callback (err, topology)
    */
-  getTopology(callback) {
-    log('Sonos.getTopology(%j)', callback)
-    request('http://' + this.host + ':' + this.port + '/status/topology', function (err, res, body) {
-      if (err) return callback(err)
-      log(body)
-      xml2js.parseString(body, function (err, topology) {
-        if (err) return callback(err)
-        const info = topology.ZPSupportInfo
-        let zones = null
-        let mediaServers = null
-        if (info.ZonePlayers && info.ZonePlayers.length > 0) {
-          zones = _.map(info.ZonePlayers[0].ZonePlayer, (zone) => _.extend(zone.$, {name: zone._}))
-        }
-        if (info.MediaServers && info.MediaServers.length > 0) {
-          mediaServers = _.map(info.MediaServers[0].MediaServer, function (zone) {
-            return _.extend(zone.$, {name: zone._})
-          })
-        }
-        callback(null, {
-          zones: zones,
-          mediaServers: mediaServers
-        })
+  async getTopology() {
+    log('Sonos.getTopology()')
+    const res = await fetch('http://' + this.host + ':' + this.port + '/status/topology')
+    log(res.body)
+    const topology = await parseXML(res.body)
+    const info = topology.ZPSupportInfo
+    let zones = null
+    let mediaServers = null
+    if (info.ZonePlayers && info.ZonePlayers.length > 0) {
+      zones = _.map(info.ZonePlayers[0].ZonePlayer, (zone) => _.extend(zone.$, {name: zone._}))
+    }
+    if (info.MediaServers && info.MediaServers.length > 0) {
+      mediaServers = _.map(info.MediaServers[0].MediaServer, function (zone) {
+        return _.extend(zone.$, {name: zone._})
       })
-    })
+    }
+    return {
+      zones,
+      mediaServers,
+    }
   }
 
   /**
@@ -689,13 +698,13 @@ export class Sonos {
     log('Sonos.currentState(%j)')
     const data = await this.transportRequest('GetTransportInfo')
     const statesToString = {
-      'STOPPED': 'stopped',
-      'PLAYING': 'playing',
-      'PAUSED_PLAYBACK': 'paused',
-      'TRANSITIONING': 'transitioning',
-      'NO_MEDIA_PRESENT': 'no_media',
+      STOPPED: 'stopped',
+      PLAYING: 'playing',
+      PAUSED_PLAYBACK: 'paused',
+      TRANSITIONING: 'transitioning',
+      NO_MEDIA_PRESENT: 'no_media',
     }
-    const state: keyof statesToString = data[0].CurrentTransportState[0]
+    const state = data[0].CurrentTransportState[0]
     return statesToString[state]
   }
 
@@ -720,108 +729,81 @@ export class Sonos {
    * @param  {String}   favoriteRadioType  Choice - stations, shows
    * @param  {Object}   options     Optional - default {start: 0, total: 100}
    */
-  async getFavoritesRadio(favoriteRadioType, options) {
+  async getFavoritesRadio(favoriteRadioType: 'stations' | 'shows', options) {
     const radioTypes = {
-      'stations': 'R:0/0',
-      'shows': 'R:0/1'
+      stations: 'R:0/0',
+      shows: 'R:0/1',
     }
-    let defaultOptions = {
-      BrowseFlag: 'BrowseDirectChildren',
-      Filter: '*',
-      StartingIndex: '0',
-      RequestedCount: '100',
-      SortCriteria: '',
-      ObjectID: 'R:0/0'
+    const opts: Partial<ContentDirectoryBrowseOptions> = {
+      ObjectID: radioTypes[favoriteRadioType],
     }
-    let opts = {
-      ObjectID: radioTypes[favoriteRadioType]
+    if (options.start !== undefined) {
+      opts.StartingIndex = options.start
     }
-    if (options.start !== undefined) opts.StartingIndex = options.start
-    if (options.total !== undefined) opts.RequestedCount = options.total
-    opts = _.extend(defaultOptions, opts)
-    const contentDirectory = new ContentDirectory(this.host, this.port)
-    const data = await contentDirectory.Browse(opts)
-    const didl = await parseXML(data['Result'])
-    const items = []
-    if ((!didl) || (!didl['DIDL-Lite'])) {
-      // TODO all these instances should provide data on error too
-      throw new Error('Cannot parse DIDTL result')
+    if (options.total !== undefined) {
+      opts.RequestedCount = options.total
     }
-    const resultcontainer = didl['DIDL-Lite'].item
+    const data = await this.browseContentDirectory(opts)
+    const resultcontainer = data['item']
     if (!util.isArray(resultcontainer)) {
       throw new Error('Cannot parse DIDTL result')
     }
     _.each(resultcontainer, item => {
       items.push({
-        'title': util.isArray(item['dc:title']) ? item['dc:title'][0] : null,
-        'uri': util.isArray(item.res) ? item.res[0]._ : null
+        title: util.isArray(item['dc:title']) ? item['dc:title'][0] : null,
+        uri: util.isArray(item.res) ? item.res[0]._ : null,
       })
     })
     return {
-      returned: data.NumberReturned,
-      total: data.TotalMatches,
-      items: items
+      returned: data['NumberReturned'],
+      total: data['TotalMatches'],
+      items,
     }
   }
 
-  // Add Spotify track to the queue.
-
-  addSpotifyQueue(trackId) {
+  /**
+   * Add Spotify track to the queue.
+   */
+  addSpotifyQueue(trackId: string) {
     const rand = '00030020'
     const uri = 'x-sonos-spotify:spotify%3atrack%3a' + trackId
     const metadata = '<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:r="urn:schemas-rinconnetworks-com:metadata-1-0/" xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/"><item id="' + rand + 'spotify%3atrack%3a' + trackId + '" restricted="true"><dc:title></dc:title><upnp:class>object.item.audioItem.musicTrack</upnp:class><desc id="cdudn" nameSpace="urn:schemas-rinconnetworks-com:metadata-1-0/">SA_RINCON2311_X_#Svc2311-0-Token</desc></item></DIDL-Lite>'
     return this.queue({ uri, metadata })
   }
 
-  // Get queue
-
-  async getQueue(callback) {
-    const defaultOptions = {
-      BrowseFlag: 'BrowseDirectChildren',
-      Filter: '*',
-      StartingIndex: '0',
+  /**
+   *  Get queue
+   */
+  async getQueue() {
+    const data = await this.browseContentDirectory({
+      ObjectID: 'Q:0',
       RequestedCount: '1000',
-      SortCriteria: ''
-    }
-
-    let opts = {
-      ObjectID: 'Q:0'
-    }
-
-    opts = _.extend(defaultOptions, opts)
-
-    const contentDirectory = new ContentDirectory(this.host, this.port)
-    const data = await contentDirectory.Browse(opts)
-    const didl = await parseXML(data['Result'])
-    const items = []
-    if ((!didl) || (!didl['DIDL-Lite'])) {
-      return callback(new Error('Cannot parse DIDTL result'), data)
-    }
-    const resultcontainer = didl['DIDL-Lite'].item
+    })
+    const resultcontainer = data['item']
     if (!util.isArray(resultcontainer)) {
-      return callback(new Error('Cannot parse DIDTL result'), data)
+      throw new Error('Cannot parse DIDTL result')
     }
-    _.each(resultcontainer, function (item) {
-      let albumArtURL = null
+    const items = _.map(resultcontainer, item => {
+      let albumArtURL: string | null = null
       if (util.isArray(item['upnp:albumArtURI'])) {
         if (item['upnp:albumArtURI'][0].indexOf('http') !== -1) {
           albumArtURL = item['upnp:albumArtURI'][0]
         } else {
-          albumArtURL = 'http://' + self.host + ':' + self.port + item['upnp:albumArtURI'][0]
+          albumArtURL = 'http://' + this.host + ':' + this.port + item['upnp:albumArtURI'][0]
         }
       }
-      items.push({
-        'title': util.isArray(item['dc:title']) ? item['dc:title'][0] : null,
-        'artist': util.isArray(item['dc:creator']) ? item['dc:creator'][0] : null,
-        'albumArtURL': albumArtURL,
-        'album': util.isArray(item['upnp:album']) ? item['upnp:album'][0] : null,
-        'uri': util.isArray(item.res) ? item.res[0]._ : null
-      })
+      return {
+        title: util.isArray(item['dc:title']) ? item['dc:title'][0] : null,
+        artist: util.isArray(item['dc:creator']) ? item['dc:creator'][0] : null,
+        albumArtURL,
+        album: util.isArray(item['upnp:album']) ? item['upnp:album'][0] : null,
+        uri: util.isArray(item.res) ? item.res[0]._ : null,
+      }
     })
     return {
-      returned: data.NumberReturned,
-      total: data.TotalMatches,
-      items: items
+      returned: data['NumberReturned'],
+      total: data['TotalMatches'],
+      items,
     }
   }
 }
@@ -854,7 +836,7 @@ class Search extends EventEmitter {
       ['239.255.255.250', '255.255.255.255'].forEach(addr => {
         this.socket.send(PLAYER_SEARCH, 0, PLAYER_SEARCH.length, 1900, addr)
       })
-      // Periodically send discover packet to find newly added devices
+      // periodically send discover packet to find newly added devices
       this.pollTimer = setTimeout(sendDiscover, 10000)
     }
     this.socket = dgram.createSocket('udp4', (buffer, rinfo) => {
