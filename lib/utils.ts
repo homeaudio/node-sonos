@@ -1,9 +1,10 @@
 import * as xml2js from 'xml2js'
+import * as xmlbuilder from 'xmlbuilder'
 import fetch from 'node-fetch'
 import { isArray } from 'util'
 
 export function parseXML(str: string) {
-  return new Promise<{[key: string]: string}>((resolve, reject) => {
+  return new Promise<{ [key: string]: string }>((resolve, reject) => {
     const parser = new xml2js.Parser()
     parser.parseString(str, (err, obj) => {
       if (err) {
@@ -11,6 +12,14 @@ export function parseXML(str: string) {
       }
       resolve(obj)
     })
+  })
+}
+
+export function buildXML(obj: any) {
+  return xmlbuilder.create(obj).toString({
+    pretty: true,
+    indent: '  ',
+    newline: '\n',
   })
 }
 
@@ -23,7 +32,7 @@ export function withinSoapEnvelope(body: string) {
     '<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">',
     `<s:Body>${body}</s:Body>`,
     '</s:Envelope>',
-    ].join('')
+  ].join('')
 }
 
 /**
@@ -42,24 +51,24 @@ export function htmlEntities(str: string) {
  * @param  {String}   responseTag Expected Response Container XML Tag
  */
 export async function soapPost(host: string, port: number, endpoint: string, action: string, body: string, responseTag: string) {
-    const res = await fetch(`http://${host}:${port}${endpoint}`,
-        {
-        method: 'POST',
-        headers: {
-            SOAPAction: action,
-            'Content-type': 'text/xml; charset=utf8',
-        },
-        body: withinSoapEnvelope(body),
-        })
-    if (res.status !== 200) {
-        throw new Error('HTTP response code ' + res.status + ' for ' + action)
-    }
-    const json = await parseXML(await res.text())
-    if ((!json) || (!json['s:Envelope']) || (!isArray(json['s:Envelope']['s:Body']))) {
-        throw new Error('Invalid response for ' + action + ': ' + JSON.stringify(json))
-    }
-    if (typeof json['s:Envelope']['s:Body'][0]['s:Fault'] !== 'undefined') {
-        throw new Error(json['s:Envelope']['s:Body'][0]['s:Fault'])
-    }
-    return json['s:Envelope']['s:Body'][0][responseTag]
+  const res = await fetch(`http://${host}:${port}${endpoint}`,
+    {
+      method: 'POST',
+      headers: {
+        SOAPAction: action,
+        'Content-type': 'text/xml; charset=utf8',
+      },
+      body: withinSoapEnvelope(body),
+    })
+  if (res.status !== 200) {
+    throw new Error('HTTP response code ' + res.status + ' for ' + action)
+  }
+  const json = await parseXML(await res.text())
+  if ((!json) || (!json['s:Envelope']) || (!isArray(json['s:Envelope']['s:Body']))) {
+    throw new Error('Invalid response for ' + action + ': ' + JSON.stringify(json))
+  }
+  if (typeof json['s:Envelope']['s:Body'][0]['s:Fault'] !== 'undefined') {
+    throw new Error(json['s:Envelope']['s:Body'][0]['s:Fault'])
+  }
+  return json['s:Envelope']['s:Body'][0][responseTag]
 }
