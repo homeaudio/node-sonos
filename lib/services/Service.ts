@@ -3,10 +3,12 @@ import { parseString } from 'xml2js'
 import * as _ from 'underscore'
 
 function withinEnvelope(body: string) {
-  return ['<?xml version="1.0" encoding="utf-8"?>',
+  return [
+    '<?xml version="1.0" encoding="utf-8"?>',
     '<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">',
-    '  <s:Body>' + body + '</s:Body>',
-    '</s:Envelope>'].join('')
+    `<s:Body>${body}</s:Body>`,
+    '</s:Envelope>',
+    ].join('')
 }
 
 interface ServiceOptions {
@@ -36,7 +38,7 @@ export class Service {
     this.SCPDURL = options.SCPDURL
   }
 
-  _request(action: string, variables: {[key:string]: string}) {
+  _request(action: string, variables: {[key: string]: string}) {
     const messageAction = '"urn:schemas-upnp-org:service:' + this.name + ':1#' + action + '"'
     const messageBodyPre = '<u:' + action + ' xmlns:u="urn:schemas-upnp-org:service:' + this.name + ':1">'
     const messageBodyPost = '</u:' + action + '>'
@@ -48,7 +50,7 @@ export class Service {
         method: 'POST',
         headers: {
           'SOAPAction': messageAction,
-          'Content-type': 'text/xml; charset=utf8'
+          'Content-type': 'text/xml; charset=utf8',
         },
         body: withinEnvelope(messageBody)
       }, (err, res, body) => {
