@@ -65,22 +65,6 @@ import { ContentDirectory, ContentDirectoryBrowseOptions } from './services/Cont
 import { soapPost, htmlEntities, parseXML } from './utils'
 import {isSpotifyUri, optionsFromSpotifyUri } from './spotify'
 
-/**
- * Parse DIDL into track structure
- */
-function parseDIDL(didl: string) {
-  if ((!didl) || (!didl['DIDL-Lite']) || (!util.isArray(didl['DIDL-Lite'].item)) || (!didl['DIDL-Lite'].item[0])) {
-    return {}
-  }
-  const item = didl['DIDL-Lite'].item[0]
-  return {
-    title: util.isArray(item['dc:title']) ? item['dc:title'][0] : null,
-    artist: util.isArray(item['dc:creator']) ? item['dc:creator'][0] : null,
-    album: util.isArray(item['upnp:album']) ? item['upnp:album'][0] : null,
-    albumArtURI: util.isArray(item['upnp:albumArtURI']) ? item['upnp:albumArtURI'][0] : null,
-  }
-}
-
 
 export class Sonos {
 
@@ -138,6 +122,35 @@ export class Sonos {
     return this.request(this.endpoints.rendering, action, body, `u:${name}Response`)
   }
 
+  private parseDIDLForSingleTrack(didl) {
+    if ((!didl) || (!didl['DIDL-Lite']) || (!util.isArray(didl['DIDL-Lite'].item)) || (!didl['DIDL-Lite'].item[0])) {
+      return {}
+    }
+    return this.parseDIDLItem(didl['DIDL-Lite'].item[0])
+  }
+
+  /**
+   * Parse DIDL into track structure
+   */
+  private parseDIDLItem(item) {
+    let albumArtURL: string | null = null
+    if (util.isArray(item['upnp:albumArtURI'])) {
+      if (item['upnp:albumArtURI'][0].indexOf('http') !== -1) {
+        albumArtURL = item['upnp:albumArtURI'][0]
+      } else {
+        albumArtURL = 'http://' + this.host + ':' + this.port + item['upnp:albumArtURI'][0]
+      }
+    }
+    return {
+      title: util.isArray(item['dc:title']) ? item['dc:title'][0] : null,
+      artist: util.isArray(item['dc:creator']) ? item['dc:creator'][0] : null,
+      albumArtURL,
+      album: util.isArray(item['upnp:album']) ? item['upnp:album'][0] : null,
+      uri: util.isArray(item.res) ? item.res[0]._ : null,
+    }
+  }
+
+
   private async browseContentDirectory(options: Partial<ContentDirectoryBrowseOptions>) {
     const defaultOptions: ContentDirectoryBrowseOptions = {
       BrowseFlag: 'BrowseDirectChildren',
@@ -153,7 +166,19 @@ export class Sonos {
     if (!didl['DIDL-Lite']) {
       throw new Error('Cannot parse DIDTL result')
     }
-    return didl['DIDL-Lite']
+    const metadata = didl['DIDL-Lite']
+    const resultcontainer: any[] = metadata['container'] || metadata['item']
+    if (!util.isArray(resultcontainer)) {
+      throw new Error('Cannot parse DIDTL result')
+    }
+
+    const items = resultcontainer.map(item => this.parseDIDLItem(item))
+    return {
+      returned: metadata['NumberReturned'],
+      total: metadata['TotalMatches'],
+      items,
+    }
+
   }
 
   /**
@@ -172,8 +197,8 @@ export class Sonos {
    * @param  {String}   searchTerm  Optional - search term to search for
    * @param  {Object}   options     Optional - default {start: 0, total: 100}
    */
-  async searchMusicLibrary(searchType: SearchType,
-                           searchTerm: string | null, options: SearchMusicLibraryOptions) {
+  searchMusicLibrary(searchType: SearchType, searchTerm: string | null,
+                     options: SearchMusicLibraryOptions) {
 
     const browseOptions: Partial<ContentDirectoryBrowseOptions> = {
       BrowseFlag: 'BrowseDirectChildren',
@@ -198,70 +223,17 @@ export class Sonos {
     if (options.total !== undefined) {
       browseOptions.RequestedCount = options.total
     }
-    const data = this.browseContentDirectory(browseOptions)
-    const resultcontainer: any[] = opensearch ? data['container'] : data['item']
-    if (!util.isArray(resultcontainer)) {
-      throw new Error('Cannot parse DIDTL result')
-    }
-
-    const items = resultcontainer.map(item => {
-      let albumArtURL: string | null = null
-      if (util.isArray(item['upnp:albumArtURI'])) {
-        if (item['upnp:albumArtURI'][0].indexOf('http') !== -1) {
-          albumArtURL = item['upnp:albumArtURI'][0]
-        } else {
-          albumArtURL = 'http://' + this.host + ':' + this.port + item['upnp:albumArtURI'][0]
-        }
-      }
-      return {
-        title: util.isArray(item['dc:title']) ? item['dc:title'][0] : null,
-        artist: util.isArray(item['dc:creator']) ? item['dc:creator'][0] : null,
-        albumArtURL,
-        album: util.isArray(item['upnp:album']) ? item['upnp:album'][0] : null,
-        uri: util.isArray(item.res) ? item.res[0]._ : null,
-      }
-    })
-    return {
-      returned: data['NumberReturned'],
-      total: data['TotalMatches'],
-      items,
-    }
+    return this.browseContentDirectory(browseOptions)
   }
 
   /**
    *  Get queue
    */
-  async getQueue() {
-    const data = await this.browseContentDirectory({
+  getQueue() {
+    return this.browseContentDirectory({
       ObjectID: 'Q:0',
       RequestedCount: '1000',
     })
-    const resultcontainer = data['item']
-    if (!util.isArray(resultcontainer)) {
-      throw new Error('Cannot parse DIDTL result')
-    }
-    const items = _.map(resultcontainer, item => {
-      let albumArtURL: string | null = null
-      if (util.isArray(item['upnp:albumArtURI'])) {
-        if (item['upnp:albumArtURI'][0].indexOf('http') !== -1) {
-          albumArtURL = item['upnp:albumArtURI'][0]
-        } else {
-          albumArtURL = 'http://' + this.host + ':' + this.port + item['upnp:albumArtURI'][0]
-        }
-      }
-      return {
-        title: util.isArray(item['dc:title']) ? item['dc:title'][0] : null,
-        artist: util.isArray(item['dc:creator']) ? item['dc:creator'][0] : null,
-        albumArtURL,
-        album: util.isArray(item['upnp:album']) ? item['upnp:album'][0] : null,
-        uri: util.isArray(item.res) ? item.res[0]._ : null,
-      }
-    })
-    return {
-      returned: data['NumberReturned'],
-      total: data['TotalMatches'],
-      items,
-    }
   }
 
   /**
@@ -283,12 +255,9 @@ export class Sonos {
     const trackUri = data[0].TrackURI ? data[0].TrackURI[0] : null
     if ((metadata) && (metadata[0].length > 0) && metadata[0] !== 'NOT_IMPLEMENTED') {
       const metadataData = await parseXML(metadata)
-      const track = parseDIDL(metadataData)
+      const track = this.parseDIDLForSingleTrack(metadataData)
       track.position = position
       track.duration = duration
-      track.albumArtURL = !track.albumArtURI ? null
-        : (track.albumArtURI.indexOf('http') !== -1) ? track.albumArtURI
-          : 'http://' + this.host + ':' + this.port + track.albumArtURI
       if (trackUri) {
         track.uri = trackUri
       }
@@ -621,7 +590,7 @@ export class Sonos {
    * @param  {String}   favoriteRadioType  Choice - stations, shows
    * @param  {Object}   options     Optional - default {start: 0, total: 100}
    */
-  private async getFavoritesRadio(favoriteRadioType: 'stations' | 'shows', options) {
+  private getFavoritesRadio(favoriteRadioType: 'stations' | 'shows', options) {
     const radioTypes = {
       stations: 'R:0/0',
       shows: 'R:0/1',
@@ -635,22 +604,7 @@ export class Sonos {
     if (options.total !== undefined) {
       opts.RequestedCount = options.total
     }
-    const data = await this.browseContentDirectory(opts)
-    const resultcontainer = data['item']
-    if (!util.isArray(resultcontainer)) {
-      throw new Error('Cannot parse DIDTL result')
-    }
-    const items = _.map(resultcontainer, item => {
-      return {
-        title: util.isArray(item['dc:title']) ? item['dc:title'][0] : null,
-        uri: util.isArray(item.res) ? item.res[0]._ : null,
-      }
-    })
-    return {
-      returned: data['NumberReturned'],
-      total: data['TotalMatches'],
-      items,
-    }
+    return this.browseContentDirectory(opts)
   }
 
   /**
