@@ -54,8 +54,6 @@ const SEARCH_TYPES_TO_SPECIFIER: {[P in SearchType]: string } =  {
 /**
  * Dependencies
  */
-import * as dgram from 'dgram'
-import { EventEmitter } from 'events'
 import * as util from 'util'
 
 import * as debug from 'debug'
@@ -64,7 +62,7 @@ import * as _ from 'underscore'
 const log = debug('sonos')
 
 import { ContentDirectory, ContentDirectoryBrowseOptions } from './services/ContentDirectory'
-import { soapPost, htmlEntities, withinSoapEnvelope, parseXML } from './utils'
+import { soapPost, htmlEntities, parseXML } from './utils'
 import {isSpotifyUri, optionsFromSpotifyUri } from './spotify'
 
 /**
@@ -108,18 +106,18 @@ export class Sonos {
    * @param  {String}   body
    * @param  {String}   responseTag Expected Response Container XML Tag
    */
-  request(endpoint: string, action: string, body: string, responseTag: string) {
+  private request(endpoint: string, action: string, body: string, responseTag: string) {
     log('Sonos.request(%j, %j, %j, %j, %j)', endpoint, action, body, responseTag)
     return soapPost(this.host, this.port, endpoint, action, body, responseTag)
   }
 
-  transportRequest(name: string, bodyContent= '') {
+  private transportRequest(name: string, bodyContent= '') {
     const action = `"urn:schemas-upnp-org:service:AVTransport:1#${name}"`
     const body = `<u:${name} xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID>${bodyContent}</u:${name}>`
     return this.request(this.endpoints.transport, action, body, `u:${name}Response`)
   }
 
-  async transportCommand(name: string, bodyContent = '') {
+  private async transportCommand(name: string, bodyContent = '') {
     const data = await this.transportRequest(name, bodyContent)
     if (data[0].$['xmlns:u'] === 'urn:schemas-upnp-org:service:AVTransport:1') {
       return true
@@ -128,30 +126,19 @@ export class Sonos {
     }
   }
 
-  deviceRequest(name: string, bodyContent = '') {
+  private deviceRequest(name: string, bodyContent = '') {
     const action = `"urn:schemas-upnp-org:service:DeviceProperties:1#${name}"`
     const body = `<u:${name} xmlns:u="urn:schemas-upnp-org:service:DeviceProperties:1">${bodyContent}</u:${name}>`
     return this.request(this.endpoints.device, action, body, `u:${name}Response`)
   }
 
-  renderingRequest(name: string, bodyContent = '') {
+  private renderingRequest(name: string, bodyContent = '') {
     const action = `"urn:schemas-upnp-org:service:RenderingControl:1#${name}"`
     const body = `<u:${name} xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1"><InstanceID>0</InstanceID><Channel>Master</Channel>${bodyContent}</u:${name}>`
     return this.request(this.endpoints.rendering, action, body, `u:${name}Response`)
   }
 
-  /**
-   * Get Music Library Information
-   * @param  {String}   searchType  Choice - artists, albumArtists, albums, genres, composers, tracks, playlists, share
-   * @param  {Object}   options     Optional - default {start: 0, total: 100}
-   * @param  {Function} callback (err, result) result - {returned: {String}, total: {String}, items:[{title:{String}, uri: {String}}]}
-   */
-  getMusicLibrary(searchType: SearchType, options) {
-    return this.searchMusicLibrary(searchType, null, options)
-  }
-
-
-  async browseContentDirectory(options: Partial<ContentDirectoryBrowseOptions>) {
+  private async browseContentDirectory(options: Partial<ContentDirectoryBrowseOptions>) {
     const defaultOptions: ContentDirectoryBrowseOptions = {
       BrowseFlag: 'BrowseDirectChildren',
       Filter: '*',
@@ -167,6 +154,16 @@ export class Sonos {
       throw new Error('Cannot parse DIDTL result')
     }
     return didl['DIDL-Lite']
+  }
+
+  /**
+   * Get Music Library Information
+   * @param  {String}   searchType  Choice - artists, albumArtists, albums, genres, composers, tracks, playlists, share
+   * @param  {Object}   options     Optional - default {start: 0, total: 100}
+   * @param  {Function} callback (err, result) result - {returned: {String}, total: {String}, items:[{title:{String}, uri: {String}}]}
+   */
+  getMusicLibrary(searchType: SearchType, options) {
+    return this.searchMusicLibrary(searchType, null, options)
   }
 
   /**
@@ -232,9 +229,45 @@ export class Sonos {
   }
 
   /**
+   *  Get queue
+   */
+  async getQueue() {
+    const data = await this.browseContentDirectory({
+      ObjectID: 'Q:0',
+      RequestedCount: '1000',
+    })
+    const resultcontainer = data['item']
+    if (!util.isArray(resultcontainer)) {
+      throw new Error('Cannot parse DIDTL result')
+    }
+    const items = _.map(resultcontainer, item => {
+      let albumArtURL: string | null = null
+      if (util.isArray(item['upnp:albumArtURI'])) {
+        if (item['upnp:albumArtURI'][0].indexOf('http') !== -1) {
+          albumArtURL = item['upnp:albumArtURI'][0]
+        } else {
+          albumArtURL = 'http://' + this.host + ':' + this.port + item['upnp:albumArtURI'][0]
+        }
+      }
+      return {
+        title: util.isArray(item['dc:title']) ? item['dc:title'][0] : null,
+        artist: util.isArray(item['dc:creator']) ? item['dc:creator'][0] : null,
+        albumArtURL,
+        album: util.isArray(item['upnp:album']) ? item['upnp:album'][0] : null,
+        uri: util.isArray(item.res) ? item.res[0]._ : null,
+      }
+    })
+    return {
+      returned: data['NumberReturned'],
+      total: data['TotalMatches'],
+      items,
+    }
+  }
+
+  /**
    * Get Current Track
    */
-  async currentTrack() {
+  async getCurrentTrack() {
     log('Sonos.currentTrack()')
     const data = await this.transportRequest('GetPositionInfo')
     if ((!util.isArray(data)) || (data.length < 1)) {
@@ -279,12 +312,31 @@ export class Sonos {
   }
 
   /**
+   * Set Volume
+   * @param  {String}   volume 0..100
+   */
+  setVolume(volume: string) {
+    log('Sonos.setVolume(%j)', volume)
+    const bodyContent = '<DesiredVolume>' + volume + '</DesiredVolume></u:SetVolume>'
+    return this.renderingRequest('SetVolume', bodyContent)
+  }
+
+  /**
    * Get Current Muted
    */
   async getMuted() {
     log('Sonos.getMuted()')
     const data = await this.renderingRequest('GetMute')
     return !!parseInt(data[0].CurrentMute[0], 10)
+  }
+
+  /**
+   * Set Muted
+   */
+  setMuted(muted: boolean) {
+    log('Sonos.setMuted(%j)')
+    const bodyContent = '<DesiredMute>' + (muted ? '1' : '0') + '</DesiredMute>'
+    return this.renderingRequest('SetMute', bodyContent)
   }
 
   /**
@@ -314,27 +366,19 @@ export class Sonos {
   }
 
   /**
-   * Stop What's Playing
-   */
-  stop() {
-    log('Sonos.stop()')
-    return this.transportCommand('Stop', '<Speed>1</Speed>')
-  }
-
-  /**
-   * Become Coordinator of Standalone Group
-   */
-  becomeCoordinatorOfStandaloneGroup() {
-    log('Sonos.becomeCoordinatorOfStandaloneGroup()')
-    return this.transportCommand('BecomeCoordinatorOfStandaloneGroup')
-  }
-
-  /**
    * Pause Current Queue
    */
   pause() {
     log('Sonos.pause()')
     return this.transportCommand('Pause', '<Speed>1</Speed>')
+  }
+
+  /**
+   * Stop What's Playing
+   */
+  stop() {
+    log('Sonos.stop()')
+    return this.transportCommand('Stop', '<Speed>1</Speed>')
   }
 
   /**
@@ -358,15 +402,6 @@ export class Sonos {
   }
 
   /**
-   * Select specific track in queue
-   * @param  {Number}   trackNr    Number of track in queue (optional, indexed from 1)
-   */
-  selectTrack(trackNr = 1) {
-    log(`Sonos.selectTrack(${trackNr}`)
-    return this.transportCommand('Seek', '<Unit>TRACK_NR</Unit><Target>' + trackNr + '</Target>')
-  }
-
-  /**
    * Play next in queue
    */
   next() {
@@ -383,6 +418,15 @@ export class Sonos {
   }
 
   /**
+   * Select specific track in queue
+   * @param  {Number}   trackNr    Number of track in queue (optional, indexed from 1)
+   */
+  selectTrack(trackNr = 1) {
+    log(`Sonos.selectTrack(${trackNr}`)
+    return this.transportCommand('Seek', '<Unit>TRACK_NR</Unit><Target>' + trackNr + '</Target>')
+  }
+
+  /**
    * Select Queue. Mostly required after turning on the speakers otherwise play, setPlaymode and other commands will fail.
    */
   async selectQueue() {
@@ -390,22 +434,6 @@ export class Sonos {
     const zoneData = await this.getZoneInfo()
     const bodyContent = '<CurrentURI>x-rincon-queue:RINCON_' + zoneData.MACAddress.replace(/:/g, '') + '0' + this.port + '#0</CurrentURI><CurrentURIMetaData></CurrentURIMetaData>'
     return this.transportCommand('SetAVTransportURI', bodyContent)
-  }
-
-  /**
-   * Add a song from spotify to the queue
-   * @param  trackId      The spotify track ID
-   */
-  queueSpotifyTrack(trackId: string) {
-    return this.queue(optionsFromSpotifyUri(`spotify:track:${trackId}`))
-  }
-
-  /**
-   * Plays Spotify radio based on artist uri
-   */
-  async playSpotifyRadio(artistId: string, artistName: string) {
-    log('Sonos.playSpotifyRadio(%j, %j)', artistId, artistName)
-    return this.queueNext(optionsFromSpotifyUri('spotify:artistRadio:' + artistId, artistName))
   }
 
   /**
@@ -443,6 +471,14 @@ export class Sonos {
   flush() {
     log('Sonos.flush()')
     return this.transportRequest('RemoveAllTracksFromQueue')
+  }
+
+  /**
+   * Become Coordinator of Standalone Group
+   */
+  becomeCoordinatorOfStandaloneGroup() {
+    log('Sonos.becomeCoordinatorOfStandaloneGroup()')
+    return this.transportCommand('BecomeCoordinatorOfStandaloneGroup')
   }
 
   /**
@@ -499,8 +535,8 @@ export class Sonos {
   /**
    * Get Information provided by /xml/device_description.xml
    */
-  async deviceDescription() {
-    log('Sonos.deviceDescription()')
+  async getDeviceDescription() {
+    log('Sonos.getDeviceDescription()')
     const res = await fetch('http://' + this.host + ':' + this.port + '/xml/device_description.xml')
     if (res.status !== 200) {
       throw new Error('Non-200 response code')
@@ -539,25 +575,6 @@ export class Sonos {
   }
 
   /**
-   * Set Volume
-   * @param  {String}   volume 0..100
-   */
-  setVolume(volume: string) {
-    log('Sonos.setVolume(%j)', volume)
-    const bodyContent = '<DesiredVolume>' + volume + '</DesiredVolume></u:SetVolume>'
-    return this.renderingRequest('SetVolume', bodyContent)
-  }
-
-  /**
-   * Set Muted
-   */
-  setMuted(muted: boolean) {
-    log('Sonos.setMuted(%j)')
-    const bodyContent = '<DesiredMute>' + (muted ? '1' : '0') + '</DesiredMute>'
-    return this.renderingRequest('SetMute', bodyContent)
-  }
-
-  /**
    * Get Zones in contact with current Zone with Group Data
    */
   async getTopology() {
@@ -586,7 +603,7 @@ export class Sonos {
    * Get Current Playback State
    */
   async getCurrentState() {
-    log('Sonos.currentState(%j)')
+    log('Sonos.getCurrentState()')
     const data = await this.transportRequest('GetTransportInfo')
     const statesToString = {
       STOPPED: 'stopped',
@@ -600,27 +617,11 @@ export class Sonos {
   }
 
   /**
-   * Get Favorites Radio Stations
-   * @param  {Object}   options     Optional - default {start: 0, total: 100}
-   */
-  getFavoritesRadioStations(options) {
-    return this.getFavoritesRadio('stations', options)
-  }
-
-  /**
-   * Get Favorites Radio Shows
-   * @param  {Object}   options     Optional - default {start: 0, total: 100}
-   */
-  getFavoritesRadioShows(options) {
-    return this.getFavoritesRadio('shows', options)
-  }
-
-  /**
    * Get Favorites Radio for a given radio type
    * @param  {String}   favoriteRadioType  Choice - stations, shows
    * @param  {Object}   options     Optional - default {start: 0, total: 100}
    */
-  async getFavoritesRadio(favoriteRadioType: 'stations' | 'shows', options) {
+  private async getFavoritesRadio(favoriteRadioType: 'stations' | 'shows', options) {
     const radioTypes = {
       stations: 'R:0/0',
       shows: 'R:0/1',
@@ -653,142 +654,35 @@ export class Sonos {
   }
 
   /**
-   * Add Spotify track to the queue.
+   * Get Favorites Radio Stations
+   * @param  {Object}   options     Optional - default {start: 0, total: 100}
    */
-  addSpotifyQueue(trackId: string) {
-    const rand = '00030020'
-    const uri = 'x-sonos-spotify:spotify%3atrack%3a' + trackId
-    const metadata = '<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:r="urn:schemas-rinconnetworks-com:metadata-1-0/" xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/"><item id="' + rand + 'spotify%3atrack%3a' + trackId + '" restricted="true"><dc:title></dc:title><upnp:class>object.item.audioItem.musicTrack</upnp:class><desc id="cdudn" nameSpace="urn:schemas-rinconnetworks-com:metadata-1-0/">SA_RINCON2311_X_#Svc2311-0-Token</desc></item></DIDL-Lite>'
-    return this.queue({ uri, metadata })
+  getFavoritesRadioStations(options) {
+    return this.getFavoritesRadio('stations', options)
   }
 
   /**
-   *  Get queue
+   * Get Favorites Radio Shows
+   * @param  {Object}   options     Optional - default {start: 0, total: 100}
    */
-  async getQueue() {
-    const data = await this.browseContentDirectory({
-      ObjectID: 'Q:0',
-      RequestedCount: '1000',
-    })
-    const resultcontainer = data['item']
-    if (!util.isArray(resultcontainer)) {
-      throw new Error('Cannot parse DIDTL result')
-    }
-    const items = _.map(resultcontainer, item => {
-      let albumArtURL: string | null = null
-      if (util.isArray(item['upnp:albumArtURI'])) {
-        if (item['upnp:albumArtURI'][0].indexOf('http') !== -1) {
-          albumArtURL = item['upnp:albumArtURI'][0]
-        } else {
-          albumArtURL = 'http://' + this.host + ':' + this.port + item['upnp:albumArtURI'][0]
-        }
-      }
-      return {
-        title: util.isArray(item['dc:title']) ? item['dc:title'][0] : null,
-        artist: util.isArray(item['dc:creator']) ? item['dc:creator'][0] : null,
-        albumArtURL,
-        album: util.isArray(item['upnp:album']) ? item['upnp:album'][0] : null,
-        uri: util.isArray(item.res) ? item.res[0]._ : null,
-      }
-    })
-    return {
-      returned: data['NumberReturned'],
-      total: data['TotalMatches'],
-      items,
-    }
-  }
-}
-
-
-interface SearchOptions {
-
-}
-
-/**
- * Search "Class"
- * Emits 'DeviceAvailable' on a Sonos Component Discovery
- */
-class Search extends EventEmitter {
-
-  foundSonosDevices: {}
-  socket: dgram.Socket
-  pollTimer: NodeJS.Timer
-  searchTimer: NodeJS.Timer
-
-  constructor(options: SearchOptions) {
-    super()
-    this.foundSonosDevices = {}
-    const PLAYER_SEARCH = new Buffer(['M-SEARCH * HTTP/1.1',
-      'HOST: 239.255.255.250:1900',
-      'MAN: ssdp:discover',
-      'MX: 1',
-      'ST: urn:schemas-upnp-org:device:ZonePlayer:1'].join('\r\n'))
-    const sendDiscover = () => {
-      ['239.255.255.250', '255.255.255.255'].forEach(addr => {
-        this.socket.send(PLAYER_SEARCH, 0, PLAYER_SEARCH.length, 1900, addr)
-      })
-      // periodically send discover packet to find newly added devices
-      this.pollTimer = setTimeout(sendDiscover, 10000)
-    }
-    this.socket = dgram.createSocket('udp4', (buffer, rinfo) => {
-      const bufferStr = buffer.toString()
-      if (bufferStr.match(/.+Sonos.+/)) {
-        const modelCheck = bufferStr.match(/SERVER.*\((.*)\)/)
-        const model = (modelCheck.length > 1 ? modelCheck[1] : null)
-        const addr = rinfo.address
-        if (!(addr in this.foundSonosDevices)) {
-          const sonos = this.foundSonosDevices[addr] = new Sonos(addr)
-          this.emit('DeviceAvailable', sonos, model)
-        }
-      }
-    })
-    this.socket.on('error', err => {
-      this.emit('error', err)
-    })
-    this.socket.bind(options, () => {
-      this.socket.setBroadcast(true)
-      sendDiscover()
-    })
-    if (options.timeout) {
-      this.searchTimer = setTimeout(() => {
-        this.socket.close()
-        this.emit('timeout')
-      }, options.timeout)
-    }
+  getFavoritesRadioShows(options) {
+    return this.getFavoritesRadio('shows', options)
   }
 
   /**
-   * Destroys Search class, stop searching, clean up
-   *
-   * @param  {Function} callback ()
+   * Add a song from spotify to the queue
+   * @param  trackId      The spotify track ID
    */
-  destroy(callback) {
-    clearTimeout(this.searchTimer)
-    clearTimeout(this.pollTimer)
-    this.socket.close(callback)
+  queueSpotifyTrack(trackId: string) {
+    return this.queue(optionsFromSpotifyUri(`spotify:track:${trackId}`))
   }
 
-}
-
-
-/**
- * Create a Search Instance (emits 'DeviceAvailable' with a found Sonos Component)
- * @param  {Object} options Optional Options to control search behavior.
- *                          Set 'timeout' to how long to search for devices
- *                          (in milliseconds).
- * @param  {Function} listener Optional 'DeviceAvailable' listener (sonos)
- * @return {Search/EventEmitter Instance}
- */
-export function search(options, listener) {
-  if (typeof options === 'function') {
-    listener = options
-    options = null
+  /**
+   * Plays Spotify radio based on artist uri
+   */
+  async playSpotifyRadio(artistId: string, artistName: string) {
+    log('Sonos.playSpotifyRadio(%j, %j)', artistId, artistName)
+    return this.queueNext(optionsFromSpotifyUri('spotify:artistRadio:' + artistId, artistName))
   }
-  options = options || {}
-  listener = listener || null
-  const search = new Search(options)
-  if (listener !== null) {
-    search.on('DeviceAvailable', listener)
-  }
-  return search
+
 }
