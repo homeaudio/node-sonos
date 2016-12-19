@@ -1,5 +1,5 @@
 import * as request from 'request'
-import { parseString } from'xml2js'
+import { parseString } from 'xml2js'
 import * as _ from 'underscore'
 
 function withinEnvelope(body: string) {
@@ -26,7 +26,7 @@ export class Service {
   controlURL: string
   eventSubURL: string
   SCPDURL: string
-  
+
   constructor(options: ServiceOptions) {
     this.name = options.name
     this.host = options.host

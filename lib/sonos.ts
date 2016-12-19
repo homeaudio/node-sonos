@@ -1,10 +1,22 @@
 /**
- * Constants
+ * Interfaces and Types
  */
-const TRANSPORT_ENDPOINT = '/MediaRenderer/AVTransport/Control'
-const RENDERING_ENDPOINT = '/MediaRenderer/RenderingControl/Control'
-const DEVICE_ENDPOINT = '/DeviceProperties/Control'
 
+interface Endpoints {
+    transport: string
+    rendering: string
+    device: string
+}
+
+interface SonosOptions {
+  port?: number
+  endpoints?: Partial<Endpoints>
+}
+
+interface SearchMusicLibraryOptions {
+  start?: string
+  total?: string
+}
 
 type SearchType = "artists"
                 | "albumArtists"
@@ -15,6 +27,17 @@ type SearchType = "artists"
                 | "playlists"
                 | "sonos_playlists"
                 | "share"
+
+
+/**
+ * Constants
+ */
+
+const DEFAULT_ENDPOINTS: Endpoints = {
+  transport: '/MediaRenderer/AVTransport/Control',
+  rendering: '/MediaRenderer/RenderingControl/Control',
+  device: '/DeviceProperties/Control',
+}
 
 const SEARCH_TYPES_TO_SPECIFIER: {[P in SearchType]: string } =  {
   artists: 'A:ARTIST',
@@ -28,6 +51,7 @@ const SEARCH_TYPES_TO_SPECIFIER: {[P in SearchType]: string } =  {
   share: 'S:',
 }
 
+
 /**
  * Dependencies
  */
@@ -36,19 +60,22 @@ import { EventEmitter } from 'events'
 import * as util from 'util'
 
 import * as debug from 'debug'
-import * as fetch from 'node-fetch'
+import fetch from 'node-fetch'
 import * as _ from 'underscore'
 import * as xml2js from 'xml2js'
 
 const log = debug('sonos')
 
+
 /**
- * Option Interfaces
+ * Services
  */
-interface SearchMusicLibraryOptions {
-  start?: string
-  total?: string
-}
+import { ContentDirectory, ContentDirectoryBrowseOptions } from './services/ContentDirectory'
+
+
+/**
+ * Helpers
+ */
 
 function parseXML(str: string) {
   return new Promise<{[key: string]: string}>((resolve, reject) => {
@@ -62,14 +89,6 @@ function parseXML(str: string) {
   })
 }
 
-/**
- * Services
- */
-import { ContentDirectory, ContentDirectoryBrowseOptions } from './services/ContentDirectory'
-
-/**
- * Helpers
- */
 
 /**
  * Wrap in UPnP Envelope
@@ -88,6 +107,9 @@ function htmlEntities(str: string) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
+/**
+ * Returns true iff a uri is a valid Spotify URI
+ */
 function isSpotifyUri(uri: string) {
   return uri.startsWith('spotify')
 }
@@ -149,41 +171,22 @@ function parseDIDL(didl: string) {
   }
 }
 
-interface SonosOptions {
-  endpoints?: {
-    transport?: string
-    rendering?: string
-    device?: string
-  }
-}
 
 export class Sonos {
 
   host: string
   port: number
-  options: SonosOptions
+  endpoints: Endpoints
 
   /**
    * Sonos Class
    * @param host IP/DNS
-   * @param port
    */
-  constructor(host: string, port?: number, options?: SonosOptions) {
+  constructor(host: string, options: SonosOptions = {}) {
     this.host = host
-    this.port = port || 1400
-    this.options = options || {}
-    if (!this.options.endpoints) {
-      this.options.endpoints = {}
-    }
-    if (!this.options.endpoints.transport) {
-      this.options.endpoints.transport = TRANSPORT_ENDPOINT
-    }
-    if (!this.options.endpoints.rendering) {
-      this.options.endpoints.rendering = RENDERING_ENDPOINT
-    }
-    if (!this.options.endpoints.device) {
-      this.options.endpoints.device = DEVICE_ENDPOINT
-    }
+    this.port = options.port || 1400
+    const endpoints = options.endpoints || {}
+    this.endpoints = {...DEFAULT_ENDPOINTS, ...endpoints}
   }
 
   /**
@@ -204,10 +207,10 @@ export class Sonos {
         },
         body: withinEnvelope(body),
       })
-    if (res.statusCode !== 200) {
-      throw new Error('HTTP response code ' + res.statusCode + ' for ' + action)
+    if (res.status !== 200) {
+      throw new Error('HTTP response code ' + res.status + ' for ' + action)
     }
-    const json = await parseXML(res.body)
+    const json = await parseXML(await res.text())
     if ((!json) || (!json['s:Envelope']) || (!util.isArray(json['s:Envelope']['s:Body']))) {
       throw new Error('Invalid response for ' + action + ': ' + JSON.stringify(json))
     }
@@ -220,7 +223,7 @@ export class Sonos {
   transportRequest(name: string, bodyContent= '') {
     const action = `"urn:schemas-upnp-org:service:AVTransport:1#${name}"`
     const body = `<u:${name} xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID>${bodyContent}</u:${name}>`
-    return this.request(this.options.endpoints.transport, action, body, `u:${name}Response`)
+    return this.request(this.endpoints.transport, action, body, `u:${name}Response`)
   }
 
   async transportCommand(name: string, bodyContent = '') {
@@ -235,13 +238,13 @@ export class Sonos {
   deviceRequest(name: string, bodyContent = '') {
     const action = `"urn:schemas-upnp-org:service:DeviceProperties:1#${name}"`
     const body = `<u:${name} xmlns:u="urn:schemas-upnp-org:service:DeviceProperties:1">${bodyContent}</u:${name}>`
-    return this.request(this.options.endpoints.device, action, body, `u:${name}Response`)
+    return this.request(this.endpoints.device, action, body, `u:${name}Response`)
   }
 
   renderingRequest(name: string, bodyContent = '') {
     const action = `"urn:schemas-upnp-org:service:RenderingControl:1#${name}"`
     const body = `<u:${name} xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1"><InstanceID>0</InstanceID><Channel>Master</Channel>${bodyContent}</u:${name}>`
-    return this.request(this.options.endpoints.rendering, action, body, `u:${name}Response`)
+    return this.request(this.endpoints.rendering, action, body, `u:${name}Response`)
   }
 
   /**
@@ -250,7 +253,7 @@ export class Sonos {
    * @param  {Object}   options     Optional - default {start: 0, total: 100}
    * @param  {Function} callback (err, result) result - {returned: {String}, total: {String}, items:[{title:{String}, uri: {String}}]}
    */
-  getMusicLibrary(searchType: string, options) {
+  getMusicLibrary(searchType: SearchType, options) {
     return this.searchMusicLibrary(searchType, null, options)
   }
 
@@ -365,7 +368,7 @@ export class Sonos {
       }
       return track
     } else {
-      const track = { position: position, duration: duration }
+      const track = { position, duration }
       if (data[0].TrackURI) {
         track.uri = data[0].TrackURI[0]
       }
@@ -444,12 +447,11 @@ export class Sonos {
   /**
    * Seek the current track
    */
-  seek(seconds) {
+  seek(seconds: number) {
     log('Sonos.seek(%j)', seconds)
-    let hh, mm, ss
-    hh = Math.floor(seconds / 3600)
-    mm = Math.floor((seconds - (hh * 3600)) / 60)
-    ss = seconds - ((hh * 3600) + (mm * 60))
+    let hh = Math.floor(seconds / 3600)
+    let mm = Math.floor((seconds - (hh * 3600)) / 60)
+    let ss = seconds - ((hh * 3600) + (mm * 60))
     if (hh < 10) {
       hh = '0' + hh
     }
@@ -611,10 +613,10 @@ export class Sonos {
   async deviceDescription() {
     log('Sonos.deviceDescription()')
     const res = await fetch('http://' + this.host + ':' + this.port + '/xml/device_description.xml')
-    if (res.statusCode !== 200) {
+    if (res.status !== 200) {
       throw new Error('Non-200 response code')
     }
-    const json = await parseXML(res.body)
+    const json = await parseXML(await res.text())
     const output = {}
     for (const d in json.root.device[0]) {
       if (json.root.device[0].hasOwnProperty(d)) {
@@ -673,7 +675,7 @@ export class Sonos {
     log('Sonos.getTopology()')
     const res = await fetch('http://' + this.host + ':' + this.port + '/status/topology')
     log(res.body)
-    const topology = await parseXML(res.body)
+    const topology = await parseXML(await res.text())
     const info = topology.ZPSupportInfo
     let zones = null
     let mediaServers = null
@@ -748,11 +750,11 @@ export class Sonos {
     if (!util.isArray(resultcontainer)) {
       throw new Error('Cannot parse DIDTL result')
     }
-    _.each(resultcontainer, item => {
-      items.push({
+    const items = _.map(resultcontainer, item => {
+      return {
         title: util.isArray(item['dc:title']) ? item['dc:title'][0] : null,
         uri: util.isArray(item.res) ? item.res[0]._ : null,
-      })
+      }
     })
     return {
       returned: data['NumberReturned'],
