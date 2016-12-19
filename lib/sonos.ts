@@ -64,7 +64,7 @@ import * as _ from 'underscore'
 const log = debug('sonos')
 
 import { ContentDirectory, ContentDirectoryBrowseOptions } from './services/ContentDirectory'
-import { htmlEntities, withinSoapEnvelope, parseXML } from './utils'
+import { soapPost, htmlEntities, withinSoapEnvelope, parseXML } from './utils'
 import {isSpotifyUri, optionsFromSpotifyUri } from './spotify'
 
 /**
@@ -108,28 +108,9 @@ export class Sonos {
    * @param  {String}   body
    * @param  {String}   responseTag Expected Response Container XML Tag
    */
-  async request(endpoint: string, action: string, body: string, responseTag: string) {
+  request(endpoint: string, action: string, body: string, responseTag: string) {
     log('Sonos.request(%j, %j, %j, %j, %j)', endpoint, action, body, responseTag)
-    const res = await fetch('http://' + this.host + ':' + this.port + endpoint,
-      {
-        method: 'POST',
-        headers: {
-          SOAPAction: action,
-          'Content-type': 'text/xml; charset=utf8',
-        },
-        body: withinSoapEnvelope(body),
-      })
-    if (res.status !== 200) {
-      throw new Error('HTTP response code ' + res.status + ' for ' + action)
-    }
-    const json = await parseXML(await res.text())
-    if ((!json) || (!json['s:Envelope']) || (!util.isArray(json['s:Envelope']['s:Body']))) {
-      throw new Error('Invalid response for ' + action + ': ' + JSON.stringify(json))
-    }
-    if (typeof json['s:Envelope']['s:Body'][0]['s:Fault'] !== 'undefined') {
-      throw new Error(json['s:Envelope']['s:Body'][0]['s:Fault'])
-    }
-    return json['s:Envelope']['s:Body'][0][responseTag]
+    return soapPost(this.host, this.port, endpoint, action, body, responseTag)
   }
 
   transportRequest(name: string, bodyContent= '') {

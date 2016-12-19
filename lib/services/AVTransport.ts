@@ -9,7 +9,7 @@ export class AVTransport extends Service {
       port,
       controlURL: '/MediaRenderer/AVTransport/Control',
       eventSubURL: '/MediaRenderer/AVTransport/Event',
-      SCPDURL: '/xml/AVTransport1.xml'
+      SCPDURL: '/xml/AVTransport1.xml',
     })
   }
 
