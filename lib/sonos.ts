@@ -18,6 +18,25 @@ interface SearchMusicLibraryOptions {
   total?: string
 }
 
+
+interface DIDLiteMetadata {
+  'res'?: [{
+    _: string,
+  }]
+  'dc:title'?: [string]
+  'dc:creator'?: [string]
+  'upnp:album'?: [string]
+  'upnp:albumArtURI'?: [string]
+}
+
+
+interface DIDLLite {
+  'DIDL-Lite': {
+    item?: DIDLiteMetadata[],
+    container?: DIDLiteMetadata[],
+  }
+}
+
 type SearchType = "artists"
                 | "albumArtists"
                 | "albums"
@@ -122,8 +141,8 @@ export class Sonos {
     return this.request(this.endpoints.rendering, action, body, `u:${name}Response`)
   }
 
-  private parseDIDLForSingleTrack(didl) {
-    if ((!didl) || (!didl['DIDL-Lite']) || (!util.isArray(didl['DIDL-Lite'].item)) || (!didl['DIDL-Lite'].item[0])) {
+  private parseDIDLForSingleTrack(didl: DIDLLite) {
+    if ((!didl) || (!didl['DIDL-Lite']) || (!util.isArray(didl['DIDL-Lite']['item'])) || (!didl['DIDL-Lite']['item'][0])) {
       return {}
     }
     return this.parseDIDLItem(didl['DIDL-Lite'].item[0])
@@ -132,21 +151,30 @@ export class Sonos {
   /**
    * Parse DIDL into track structure
    */
-  private parseDIDLItem(item) {
+  private parseDIDLItem(item: DIDLiteMetadata) {
+
+    const dcTitle = item['dc:title']
+    const dcCreator = item['dc:creator']
+    const album = item['upnp:album']
+    const albumArtURI = item['upnp:albumArtURI']
+
     let albumArtURL: string | null = null
-    if (util.isArray(item['upnp:albumArtURI'])) {
-      if (item['upnp:albumArtURI'][0].indexOf('http') !== -1) {
-        albumArtURL = item['upnp:albumArtURI'][0]
+    if (albumArtURI) {
+      if (albumArtURI[0].indexOf('http') !== -1) {
+        albumArtURL = albumArtURI[0]
       } else {
-        albumArtURL = 'http://' + this.host + ':' + this.port + item['upnp:albumArtURI'][0]
+        albumArtURL = 'http://' + this.host + ':' + this.port + albumArtURI[0]
       }
     }
+
+
+
     return {
-      title: util.isArray(item['dc:title']) ? item['dc:title'][0] : null,
-      artist: util.isArray(item['dc:creator']) ? item['dc:creator'][0] : null,
+      title: dcTitle ? dcTitle[0] : null,
+      artist: dcCreator ? dcCreator[0] : null,
       albumArtURL,
-      album: util.isArray(item['upnp:album']) ? item['upnp:album'][0] : null,
-      uri: util.isArray(item.res) ? item.res[0]._ : null,
+      album: album ? album[0] : null,
+      uri: item.res ? item.res[0]._ : null,
     }
   }
 
