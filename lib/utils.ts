@@ -42,6 +42,14 @@ export function htmlEntities(str: string) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
+export function prepareSoapActionXML(action: string, name: string, body: { [key: string]: any }) {
+    return buildXML({
+        [`u:${action}`]: {
+            '@xmlns:u': `urn:schemas-upnp-org:service:${name}:1`,
+            ...body,
+        },
+    })
+}
 
 /**
  * UPnP HTTP Request
