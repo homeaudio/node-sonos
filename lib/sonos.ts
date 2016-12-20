@@ -293,11 +293,9 @@ export class Sonos {
    * Set Volume
    * @param  {String}   volume 0..100
    */
-  async setVolume(volume: number) {
+  setVolume(volume: number) {
     log('Sonos.setVolume(%j)', volume)
-    const data = await this.renderingControl.SetVolume({ DesiredVolume: volume })
-    log(data)
-    return true
+    return this.renderingControl.SetVolume({ DesiredVolume: volume })
   }
 
   /**

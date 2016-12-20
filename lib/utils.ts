@@ -89,7 +89,7 @@ export async function soapPost(host: string, port: number, endpoint: string, ser
       body: withinSoapEnvelope(bodyXML),
     })
   if (res.status !== 200) {
-    throw new Error('HTTP response code ' + res.status + ' for ' + action)
+    throw new Error('HTTP response code ' + res.status + ' for ' + action + ': ' + res.statusText)
   }
   const text = await res.text()
   const json = await parseXML(text)
@@ -101,9 +101,12 @@ export async function soapPost(host: string, port: number, endpoint: string, ser
     throw new Error(resultBody['s:Fault'])
   }
   if (typeof resultBody[responseTag] !== 'undefined') {
-    const {$, ...response} = json['s:Envelope']['s:Body'][responseTag]
+    const {$, ...response} = resultBody[responseTag]
+    if (!$ || $['xmlns:u'] !== `urn:schemas-upnp-org:service:${serviceName}:1`) {
+      throw new Error('Response service tag does not match expectation')
+    }
     logResponse(response)
-    return json['s:Envelope']['s:Body'][responseTag]
+    return response
   } else {
     throw new Error(`Missing response tag and no error for '${action}: ${json} `)
   }
