@@ -9,7 +9,7 @@ interface ServiceOptions {
   SCPDURL: string
 }
 
-export class Service {
+export abstract class Service {
 
   name: string
   host: string
@@ -27,8 +27,10 @@ export class Service {
     this.SCPDURL = options.SCPDURL
   }
 
-  _request(action: string, variables: {[key: string]: string}) {
-    return soapPost(this.host, this.port, this.controlURL, this.name, action, variables)
+  abstract get bodyExtras()
+
+  _request(action: string, body: {[key: string]: any} = {}) {
+    return soapPost(this.host, this.port, this.controlURL, this.name, action, {...this.bodyExtras, ...body})
   }
 
 }

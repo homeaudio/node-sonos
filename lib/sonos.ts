@@ -86,6 +86,7 @@ import * as _ from 'underscore'
 const log = debug('sonos')
 
 import { ContentDirectory, ContentDirectoryBrowseOptions } from './services/ContentDirectory'
+import { RenderingControl, AVTransport } from './services'
 import { soapPost, parseXML } from './utils'
 import { isSpotifyUri, optionsFromSpotifyUri } from './spotify'
 
@@ -96,6 +97,11 @@ export class Sonos {
   port: number
   endpoints: Endpoints
 
+  contentDirectory: ContentDirectory
+  renderingControl: RenderingControl
+  avTransport: AVTransport
+
+
   /**
    * Sonos Class
    * @param host IP/DNS
@@ -105,6 +111,9 @@ export class Sonos {
     this.port = options.port || 1400
     const endpoints = options.endpoints || {}
     this.endpoints = {...DEFAULT_ENDPOINTS, ...endpoints}
+    this.contentDirectory = new ContentDirectory(this.host, this.port)
+    this.renderingControl = new RenderingControl(this.host, this.port)
+    this.avTransport = new AVTransport(this.host, this.port)
   }
 
   /**
@@ -114,25 +123,12 @@ export class Sonos {
     return soapPost(this.host, this.port, endpoint, serviceName, action, body)
   }
 
-  private transportRequest(action: string, body: { [key: string]: any } = {}) {
-    return this.request(this.endpoints.transport, 'AVTransport', action, { InstanceID: 0, ...body })
-  }
-
-  private async transportCommand(action: string, body: { [key: string]: any } = {}) {
-    const data = await this.transportRequest(action, body)
-    if (data.$['xmlns:u'] === 'urn:schemas-upnp-org:service:AVTransport:1') {
-      return true
-    } else {
-      throw new Error(data)
-    }
-  }
-
   private deviceRequest(action: string, body: { [key: string]: any } = {}) {
     return this.request(this.endpoints.device, 'DeviceProperties', action, body)
   }
 
   private renderingRequest(action: string, body: { [key: string]: any } = {}) {
-    return this.request(this.endpoints.transport, 'RenderingControl', action,
+    return this.request(this.endpoints.rendering, 'RenderingControl', action,
       { InstanceID: 0, Channel: 'Master', ...body })
   }
 
@@ -258,10 +254,7 @@ export class Sonos {
    */
   async getCurrentTrack() {
     log('Sonos.currentTrack()')
-    const data = await this.transportRequest('GetPositionInfo')
-    if ((!util.isArray(data)) || (data.length < 1)) {
-      return {}
-    }
+    const data = await this.avTransport.GetPositionInfo()
     const metadata = data.TrackMetaData
     const position = (parseInt(data.RelTime.split(':'), 10) * 60 * 60) +
       (parseInt(data.RelTime.split(':')[1], 10) * 60) +
@@ -293,7 +286,7 @@ export class Sonos {
    */
   async getVolume() {
     log('Sonos.getVolume()')
-    const data = await this.renderingRequest('GetVolume')
+    const data = await this.renderingControl.GetVolume()
     return parseInt(data.CurrentVolume, 10)
   }
 
@@ -301,9 +294,11 @@ export class Sonos {
    * Set Volume
    * @param  {String}   volume 0..100
    */
-  setVolume(volume: string) {
+  async setVolume(volume: number) {
     log('Sonos.setVolume(%j)', volume)
-    return this.renderingRequest('SetVolume', { DesiredVolume: volume })
+    const data = await this.renderingControl.SetVolume({ DesiredVolume: volume })
+    log(data)
+    return true
   }
 
   /**
@@ -345,7 +340,7 @@ export class Sonos {
       await this.selectTrack(selectTrackNum)
       return this.play()
     } else {
-      return this.transportCommand('Play', { Speed: 1 })
+      return this.avTransport.Play({ Speed: 1 })
     }
   }
 
@@ -354,7 +349,7 @@ export class Sonos {
    */
   pause() {
     log('Sonos.pause()')
-    return this.transportCommand('Pause', { Speed: 1 })
+    return this.avTransport.Pause({ Speed: 1 })
   }
 
   /**
@@ -362,7 +357,7 @@ export class Sonos {
    */
   stop() {
     log('Sonos.stop()')
-    return this.transportCommand('Stop', { Speed: 1 })
+    return this.avTransport.Stop({ Speed: 1 })
   }
 
   /**
@@ -382,11 +377,10 @@ export class Sonos {
     if (ss < 10) {
       ss = '0' + ss
     }
-    return this.transportCommand('Seek',
-      {
-        Unit: 'REL_TIME',
-        Target: hh + ':' + mm + ':' + ss,
-      })
+    return this.avTransport.Seek({
+      Unit: 'REL_TIME',
+      Target: hh + ':' + mm + ':' + ss,
+    })
   }
 
   /**
@@ -394,7 +388,7 @@ export class Sonos {
    */
   next() {
     log('Sonos.next()')
-    return this.transportCommand('Next', { Speed: 1 })
+    return this.avTransport.Next({ Speed: 1 })
   }
 
   /**
@@ -402,7 +396,7 @@ export class Sonos {
    */
   previous() {
     log('Sonos.previous()')
-    return this.transportCommand('Previous', { Speed: 1 })
+    return this.avTransport.Previous({ Speed: 1 })
   }
 
   /**
@@ -411,9 +405,9 @@ export class Sonos {
    */
   selectTrack(trackNr = 1) {
     log(`Sonos.selectTrack(${trackNr}`)
-    return this.transportCommand('Seek', {
-        Unit: 'TRACK_NR',
-        Target: trackNr,
+    return this.avTransport.Seek({
+      Unit: 'TRACK_NR',
+      Target: trackNr,
     })
   }
 
@@ -423,7 +417,7 @@ export class Sonos {
   async selectQueue() {
     log('Sonos.selectQueue()')
     const zoneData = await this.getZoneInfo()
-    return this.transportCommand('SetAVTransportURI', {
+    return this.avTransport.SetAVTransportURI({
       CurrentURI: 'x-rincon-queue:RINCON_' + zoneData.MACAddress.replace(/:/g, '') + '0' + this.port + '#0',
       CurrentURIMetaData: '',
     })
@@ -434,9 +428,9 @@ export class Sonos {
    * @param   uri      URI to Audio Stream
    * @param   metadata  optional metadata about the audio stream
    */
-  queueNext(opts: { uri: string, metadata?: string}) {
+  queueNext(opts: { uri: string, metadata: string}) {
     log(`Sonos.queueNext(${opts})`)
-    return this.transportRequest('SetAVTransportURI', {
+    return this.avTransport.SetAVTransportURI({
       CurrentURI: opts.uri,
       CurrentURIMetaData: opts.metadata || '',
     })
@@ -455,7 +449,7 @@ export class Sonos {
       positionInQueue: 0,
     }
     options = { ...defaultOptions, ...options }
-    return this.transportRequest('AddURIToQueue', {
+    return this.avTransport.AddURIToQueue({
       EnqueuedURI: options.uri,
       EnqueuedURIMetaData: options.metadata,
       DesiredFirstTrackNumberEnqueued: options.positionInQueue,
@@ -469,7 +463,7 @@ export class Sonos {
    */
   flush() {
     log('Sonos.flush()')
-    return this.transportRequest('RemoveAllTracksFromQueue')
+    return this.avTransport.RemoveAllTracksFromQueue()
   }
 
   /**
@@ -477,7 +471,7 @@ export class Sonos {
    */
   becomeCoordinatorOfStandaloneGroup() {
     log('Sonos.becomeCoordinatorOfStandaloneGroup()')
-    return this.transportCommand('BecomeCoordinatorOfStandaloneGroup')
+    return this.avTransport.BecomeCoordinatorOfStandaloneGroup()
   }
 
   /**
@@ -551,7 +545,7 @@ export class Sonos {
     if (!mode) {
       throw new Error('invalid play mode ' + playmode)
     }
-    return this.transportRequest('SetPlayMode', { NewPlayMode: playmode.toUpperCase() })
+    return this.avTransport.SetPlayMode({ NewPlayMode: playmode.toUpperCase()})
   }
 
   /**
@@ -584,7 +578,7 @@ export class Sonos {
    */
   async getCurrentState() {
     log('Sonos.getCurrentState()')
-    const data = await this.transportRequest('GetTransportInfo')
+    const data = await this.avTransport.GetTransportInfo()
     const statesToString = {
       STOPPED: 'stopped',
       PLAYING: 'playing',
@@ -592,8 +586,7 @@ export class Sonos {
       TRANSITIONING: 'transitioning',
       NO_MEDIA_PRESENT: 'no_media',
     }
-    const state = data.CurrentTransportState
-    return statesToString[state]
+    return statesToString[data.CurrentTransportState]
   }
 
   /**

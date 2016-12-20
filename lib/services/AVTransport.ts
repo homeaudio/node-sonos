@@ -13,35 +13,56 @@ export class AVTransport extends Service {
     })
   }
 
-  SetAVTransportURI(options) { return this._request('SetAVTransportURI', options) }
-  AddURIToQueue(options) { return this._request('AddURIToQueue', options) }
+  get bodyExtras() {
+    return { InstanceID: 0 }
+  }
+
+  SetAVTransportURI(opts: {
+    CurrentURI: string,
+    CurrentURIMetaData: string,
+    InstanceID?: number,
+  }) { return this._request('SetAVTransportURI', opts) }
+  AddURIToQueue(opts: {
+    EnqueuedURI: string,
+    EnqueuedURIMetaData: string,
+    DesiredFirstTrackNumberEnqueued: number,
+    EnqueueAsNext: 1 | 0,
+    InstanceID?: number,
+  }) { return this._request('AddURIToQueue', opts) }
   AddMultipleURIsToQueue(options) { return this._request('AddMultipleURIsToQueue', options) }
   ReorderTracksInQueue(options) { return this._request('ReorderTracksInQueue', options) }
   RemoveTrackFromQueue(options) { return this._request('RemoveTrackFromQueue', options) }
   RemoveTrackRangeFromQueue(options) { return this._request('RemoveTrackRangeFromQueue', options) }
-  RemoveAllTracksFromQueue(options) { return this._request('RemoveAllTracksFromQueue', options) }
+  RemoveAllTracksFromQueue() { return this._request('RemoveAllTracksFromQueue') }
   SaveQueue(options) { return this._request('SaveQueue', options) }
   BackupQueue(options) { return this._request('BackupQueue', options) }
   GetMediaInfo(options) { return this._request('GetMediaInfo', options) }
-  GetTransportInfo(options) { return this._request('GetTransportInfo', options) }
-  GetPositionInfo(options) { return this._request('GetPositionInfo', options) }
+  GetTransportInfo(opts?: { InstanceID?: number }): Promise<{
+    CurrentTransportState: 'STOPPED' | 'PLAYING' | 'PAUSED_PLAYBACK' | 'TRANSITIONING' | 'NO_MEDIA_PRESENT'
+    CurrentTransportStatus: string,
+    CurrentSpeed: '1',
+  }> { return this._request('GetTransportInfo', opts) }
+  GetPositionInfo(opts?: { InstanceID?: number}) { return this._request('GetPositionInfo', opts) }
   GetDeviceCapabilities(options) { return this._request('GetDeviceCapabilities', options) }
   GetTransportSettings(options) { return this._request('GetTransportSettings', options) }
   GetCrossfadeMode(options) { return this._request('GetCrossfadeMode', options) }
-  Stop(options) { return this._request('Stop', options) }
-  Play(options) { return this._request('Play', options) }
-  Pause(options) { return this._request('Pause', options) }
-  Seek(options) { return this._request('Seek', options) }
-  Next(options) { return this._request('Next', options) }
+  Stop(opts: { Speed: number, InstanceID?: number }) { return this._request('Stop', opts) }
+  Play(opts: { Speed: number, InstanceID?: number }) { return this._request('Play', opts) }
+  Pause(opts: { Speed: number, InstanceID?: number }) { return this._request('Pause', opts) }
+  Seek(opts: { Unit: 'TRACK_NR' | 'REL_TIME', Target: string | number }) { return this._request('Seek', opts) }
+  Next(opts: { Speed: number, InstanceID?: number }) { return this._request('Next', opts) }
   NextProgrammedRadioTracks(options) { return this._request('NextProgrammedRadioTracks', options) }
-  Previous(options) { return this._request('Previous', options) }
+  Previous(opts: { Speed: number, InstanceID?: number }) { return this._request('Previous', opts) }
   NextSection(options) { return this._request('NextSection', options) }
   PreviousSection(options) { return this._request('PreviousSection', options) }
-  SetPlayMode(options) { return this._request('SetPlayMode', options) }
+  SetPlayMode(opts: {
+    NewPlayMode: 'NORMAL' | 'REPEAT_ALL' | 'SHUFFLE' | 'SHUFFLE_NOREPEAT',
+    InstanceID?: number,
+  }) { return this._request('SetPlayMode', opts) }
   SetCrossfadeMode(options) { return this._request('SetCrossfadeMode', options) }
   NotifyDeletedURI(options) { return this._request('NotifyDeletedURI', options) }
   GetCurrentTransportActions(options) { return this._request('GetCurrentTransportActions', options) }
-  BecomeCoordinatorOfStandaloneGroup(options) { return this._request('BecomeCoordinatorOfStandaloneGroup', options) }
+  BecomeCoordinatorOfStandaloneGroup(opts?: {InstanceID?: number}) { return this._request('BecomeCoordinatorOfStandaloneGroup', opts) }
   DelegateGroupCoordinationTo(options) { return this._request('DelegateGroupCoordinationTo', options) }
   BecomeGroupCoordinator(options) { return this._request('BecomeGroupCoordinator', options) }
   BecomeGroupCoordinatorAndSource(options) { return this._request('BecomeGroupCoordinatorAndSource', options) }
