@@ -42,6 +42,7 @@
   "dependencies": {
     "debug": "^2.4.5",
     "ip": "1.1.4",
+    "node-fetch": "^1.6.3",
     "request": "^2.79.0",
     "underscore": "1.8.3",
     "xml2js": "0.4.17",
