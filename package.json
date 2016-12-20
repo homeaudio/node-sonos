@@ -2,8 +2,8 @@
   "name": "sonos",
   "version": "0.12.1",
   "description": "Node.js Sonos Interface",
-  "main": "lib/sonos.js",
-  "types": "lib/sonos.ts",
+  "main": "index.js",
+  "types": "index.ts",
   "scripts": {
     "build": "tsc",
     "watch": "tsc -w",

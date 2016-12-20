@@ -8,10 +8,13 @@
             "name": "Launch Program",
             "type": "node2",
             "request": "launch",
-            "program": "${workspaceRoot}/index.js",
+            "program": "${workspaceRoot}/examples/getsonosplaylists.js",
             "cwd": "${workspaceRoot}",
             "outFiles": [],
-            "sourceMaps": true
+            "sourceMaps": true,
+            "env": {
+                "SONOS_HOST": "192.168.1.80",
+            }
         },
         {
             "name": "Attach to Process",

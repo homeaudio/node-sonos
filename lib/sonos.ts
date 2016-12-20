@@ -19,16 +19,11 @@ interface SearchMusicLibraryOptions {
 }
 
 
-interface DIDLiteMetadata {
-  'res'?: [{
-    _: string,
-  }]
-  'dc:title'?: [string]
-  'dc:creator'?: [string]
-  'upnp:album'?: [string]
-  'upnp:albumArtURI'?: [string]
+interface BrowseDirectoryResult {
+  Result: string
+  NumberReturned: string
+  TotalMatches: string
 }
-
 
 interface DIDLLite {
   'DIDL-Lite': {
@@ -37,15 +32,25 @@ interface DIDLLite {
   }
 }
 
-type SearchType = "artists"
-                | "albumArtists"
-                | "albums"
-                | "genres"
-                | "composers"
-                | "tracks"
-                | "playlists"
-                | "sonos_playlists"
-                | "share"
+interface DIDLiteMetadata {
+  res?: [{
+    _: string,
+  }]
+  'dc:title'?: [string]
+  'dc:creator'?: [string]
+  'upnp:album'?: [string]
+  'upnp:albumArtURI'?: [string]
+}
+
+type SearchType = 'artists'
+                | 'albumArtists'
+                | 'albums'
+                | 'genres'
+                | 'composers'
+                | 'tracks'
+                | 'playlists'
+                | 'sonos_playlists'
+                | 'share'
 
 
 /**
@@ -110,7 +115,7 @@ export class Sonos {
    * @param  {String}   responseTag Expected Response Container XML Tag
    */
   private request(endpoint: string, action: string, body: string, responseTag: string) {
-    log('Sonos.request(%j, %j, %j, %j, %j)', endpoint, action, body, responseTag)
+    log('Sonos.request(%j, %j, %j, %j)', endpoint, action, body, responseTag)
     return soapPost(this.host, this.port, endpoint, action, body, responseTag)
   }
 
@@ -167,8 +172,6 @@ export class Sonos {
       }
     }
 
-
-
     return {
       title: dcTitle ? dcTitle[0] : null,
       artist: dcCreator ? dcCreator[0] : null,
@@ -177,7 +180,6 @@ export class Sonos {
       uri: item.res ? item.res[0]._ : null,
     }
   }
-
 
   private async browseContentDirectory(options: Partial<ContentDirectoryBrowseOptions>) {
     const defaultOptions: ContentDirectoryBrowseOptions = {
@@ -189,21 +191,18 @@ export class Sonos {
       ObjectID: '',
     }
     const contentDirectory = new ContentDirectory(this.host, this.port)
-    const data = await contentDirectory.Browse({...defaultOptions, ...options})
-    const didl = await parseXML(data['Result'])
+    const data: BrowseDirectoryResult = await contentDirectory.Browse({...defaultOptions, ...options})
+    const didl: DIDLLite = await parseXML(data['Result'])
     if (!didl['DIDL-Lite']) {
       throw new Error('Cannot parse DIDTL result')
     }
-    const metadata = didl['DIDL-Lite']
-    const resultcontainer: any[] = metadata['container'] || metadata['item']
-    if (!util.isArray(resultcontainer)) {
-      throw new Error('Cannot parse DIDTL result')
-    }
 
-    const items = resultcontainer.map(item => this.parseDIDLItem(item))
+    const metadata = didl['DIDL-Lite']
+    const resultcontainer = metadata['container'] || metadata['item']
+    const items = !resultcontainer ? [] : resultcontainer.map(item => this.parseDIDLItem(item))
     return {
-      returned: metadata['NumberReturned'],
-      total: metadata['TotalMatches'],
+      returned: parseInt(data['NumberReturned'], 10),
+      total: parseInt(data['TotalMatches'], 10),
       items,
     }
 
@@ -226,7 +225,7 @@ export class Sonos {
    * @param  {Object}   options     Optional - default {start: 0, total: 100}
    */
   searchMusicLibrary(searchType: SearchType, searchTerm: string | null,
-                     options: SearchMusicLibraryOptions) {
+                     options: SearchMusicLibraryOptions = {}) {
 
     const browseOptions: Partial<ContentDirectoryBrowseOptions> = {
       BrowseFlag: 'BrowseDirectChildren',

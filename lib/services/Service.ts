@@ -28,7 +28,7 @@ export class Service {
     this.SCPDURL = options.SCPDURL
   }
 
-  async _request(action: string, variables: {[key: string]: string}) {
+  _request(action: string, variables: {[key: string]: string}) {
     const messageAction = `"urn:schemas-upnp-org:service:${this.name}:1#${action}"`
     const messageBody = [
       `<u:${action} xmlns:u="urn:schemas-upnp-org:service:${this.name}:1">`,
@@ -36,12 +36,7 @@ export class Service {
       `</u:${action}>`,
       ].join('')
     const responseTag = `u:${action}Response`
-    const output = await soapPost(this.host, this.port, this.controlURL, messageAction, messageBody, responseTag)
-    delete output.$
-    _.each(output, (item, key) => {
-      output[key] = item[0]
-    })
-    return output
+    return soapPost(this.host, this.port, this.controlURL, messageAction, messageBody, responseTag)
   }
 
 }

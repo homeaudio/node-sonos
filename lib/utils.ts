@@ -1,11 +1,16 @@
 import * as xml2js from 'xml2js'
 import * as xmlbuilder from 'xmlbuilder'
 import fetch from 'node-fetch'
-import { isArray } from 'util'
+import * as debug from 'debug'
+
+const logRequest = debug('sonos:net:request')
+const logResponse = debug('sonos:net:response')
 
 export function parseXML(str: string) {
-  return new Promise<{ [key: string]: string }>((resolve, reject) => {
-    const parser = new xml2js.Parser()
+  return new Promise<any>((resolve, reject) => {
+    const parser = new xml2js.Parser({
+      explicitArray: false,
+    })
     parser.parseString(str, (err, obj) => {
       if (err) {
         reject(err)
@@ -59,6 +64,7 @@ export function prepareSoapActionXML(action: string, name: string, body: { [key:
  * @param  {String}   responseTag Expected Response Container XML Tag
  */
 export async function soapPost(host: string, port: number, endpoint: string, action: string, body: string, responseTag: string) {
+  logRequest(body)
   const res = await fetch(`http://${host}:${port}${endpoint}`,
     {
       method: 'POST',
@@ -71,12 +77,19 @@ export async function soapPost(host: string, port: number, endpoint: string, act
   if (res.status !== 200) {
     throw new Error('HTTP response code ' + res.status + ' for ' + action)
   }
-  const json = await parseXML(await res.text())
-  if ((!json) || (!json['s:Envelope']) || (!isArray(json['s:Envelope']['s:Body']))) {
+  const text = await res.text()
+  const json = await parseXML(text)
+  if (!json || !json['s:Envelope'] || !json['s:Envelope']['s:Body']) {
     throw new Error('Invalid response for ' + action + ': ' + JSON.stringify(json))
   }
-  if (typeof json['s:Envelope']['s:Body'][0]['s:Fault'] !== 'undefined') {
-    throw new Error(json['s:Envelope']['s:Body'][0]['s:Fault'])
+  const resultBody = json['s:Envelope']['s:Body']
+  if (typeof resultBody['s:Fault'] !== 'undefined') {
+    throw new Error(resultBody['s:Fault'])
   }
-  return json['s:Envelope']['s:Body'][0][responseTag]
+  if (typeof resultBody[responseTag] !== 'undefined') {
+    logResponse(json['s:Envelope']['s:Body'][responseTag])
+    return json['s:Envelope']['s:Body'][responseTag]
+  } else {
+    throw new Error(`Missing response tag and no error for '${action}: ${json} `)
+  }
 }

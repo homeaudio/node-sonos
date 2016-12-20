@@ -1,5 +1,6 @@
 import * as dgram from 'dgram'
 import { EventEmitter } from 'events'
+import { Sonos } from './sonos'
 
 interface SearchOptions {
 
@@ -9,7 +10,7 @@ interface SearchOptions {
  * Search "Class"
  * Emits 'DeviceAvailable' on a Sonos Component Discovery
  */
-class Search extends EventEmitter {
+export class Search extends EventEmitter {
 
   foundSonosDevices: {}
   socket: dgram.Socket
