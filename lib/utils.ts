@@ -11,7 +11,7 @@ export function parseXML(str: string) {
     const parser = new xml2js.Parser({
       explicitArray: false,
     })
-    parser.parseString(str, (err, obj) => {
+    parser.parseString(str, (err: any, obj: any) => {
       if (err) {
         reject(err)
       }

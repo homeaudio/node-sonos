@@ -78,8 +78,6 @@ const SEARCH_TYPES_TO_SPECIFIER: {[P in SearchType]: string } =  {
 /**
  * Dependencies
  */
-import * as util from 'util'
-
 import * as debug from 'debug'
 import fetch from 'node-fetch'
 import * as _ from 'underscore'
@@ -133,10 +131,11 @@ export class Sonos {
   }
 
   private parseDIDLForSingleTrack(didl: DIDLLite) {
-    if (!didl || !didl['DIDL-Lite'] || !didl['DIDL-Lite']['item']) {
+    const x = didl['DIDL-Lite']
+    if (!x.item || !x.item[0]) {
       return {}
     }
-    return this.parseDIDLItem(didl['DIDL-Lite']['item'])
+    return this.parseDIDLItem(x.item[0])
   }
 
   /**
@@ -401,13 +400,13 @@ export class Sonos {
 
   /**
    * Select specific track in queue
-   * @param  {Number}   trackNr    Number of track in queue (optional, indexed from 1)
+   * @param  trackNumber  Number of track in queue (optional, indexed from 1)
    */
-  selectTrack(trackNr = 1) {
-    log(`Sonos.selectTrack(${trackNr}`)
+  selectTrack(trackNumber = 1) {
+    log(`Sonos.selectTrack(${trackNumber}`)
     return this.avTransport.Seek({
       Unit: 'TRACK_NR',
-      Target: trackNr,
+      Target: trackNumber,
     })
   }
 
@@ -428,7 +427,7 @@ export class Sonos {
    * @param   uri      URI to Audio Stream
    * @param   metadata  optional metadata about the audio stream
    */
-  queueNext(opts: { uri: string, metadata: string}) {
+  queueNext(opts: { uri: string, metadata?: string}) {
     log(`Sonos.queueNext(${opts})`)
     return this.avTransport.SetAVTransportURI({
       CurrentURI: opts.uri,
