@@ -1,4 +1,3 @@
-import * as _ from 'underscore'
 import { soapPost } from '../utils'
 
 interface ServiceOptions {
@@ -29,14 +28,7 @@ export class Service {
   }
 
   _request(action: string, variables: {[key: string]: string}) {
-    const messageAction = `"urn:schemas-upnp-org:service:${this.name}:1#${action}"`
-    const messageBody = [
-      `<u:${action} xmlns:u="urn:schemas-upnp-org:service:${this.name}:1">`,
-      _.map(variables, (value, key) => `<${key}>${value}</${key}>`).join(''),
-      `</u:${action}>`,
-      ].join('')
-    const responseTag = `u:${action}Response`
-    return soapPost(this.host, this.port, this.controlURL, messageAction, messageBody, responseTag)
+    return soapPost(this.host, this.port, this.controlURL, this.name, action, variables)
   }
 
 }

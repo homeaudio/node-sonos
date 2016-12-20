@@ -33,13 +33,13 @@ interface DIDLLite {
 }
 
 interface DIDLiteMetadata {
-  res?: [{
+  res?: {
     _: string,
-  }]
-  'dc:title'?: [string]
-  'dc:creator'?: [string]
-  'upnp:album'?: [string]
-  'upnp:albumArtURI'?: [string]
+  }
+  'dc:title'?: string
+  'dc:creator'?: string
+  'upnp:album'?: string
+  'upnp:albumArtURI'?: string
 }
 
 type SearchType = 'artists'
@@ -86,8 +86,8 @@ import * as _ from 'underscore'
 const log = debug('sonos')
 
 import { ContentDirectory, ContentDirectoryBrowseOptions } from './services/ContentDirectory'
-import { soapPost, htmlEntities, parseXML } from './utils'
-import {isSpotifyUri, optionsFromSpotifyUri } from './spotify'
+import { soapPost, parseXML } from './utils'
+import { isSpotifyUri, optionsFromSpotifyUri } from './spotify'
 
 
 export class Sonos {
@@ -109,48 +109,38 @@ export class Sonos {
 
   /**
    * UPnP HTTP Request
-   * @param  {String}   endpoint    HTTP Path
-   * @param  {String}   action      UPnP Call/Function/Action
-   * @param  {String}   body
-   * @param  {String}   responseTag Expected Response Container XML Tag
    */
-  private request(endpoint: string, action: string, body: string, responseTag: string) {
-    log('Sonos.request(%j, %j, %j, %j)', endpoint, action, body, responseTag)
-    return soapPost(this.host, this.port, endpoint, action, body, responseTag)
+  private request(endpoint: string, serviceName: string, action: string, body: { [key: string]: any }) {
+    return soapPost(this.host, this.port, endpoint, serviceName, action, body)
   }
 
-  private transportRequest(name: string, bodyContent= '') {
-    const action = `"urn:schemas-upnp-org:service:AVTransport:1#${name}"`
-    const body = `<u:${name} xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID>${bodyContent}</u:${name}>`
-    return this.request(this.endpoints.transport, action, body, `u:${name}Response`)
+  private transportRequest(action: string, body: { [key: string]: any } = {}) {
+    return this.request(this.endpoints.transport, 'AVTransport', action, { InstanceID: 0, ...body })
   }
 
-  private async transportCommand(name: string, bodyContent = '') {
-    const data = await this.transportRequest(name, bodyContent)
-    if (data[0].$['xmlns:u'] === 'urn:schemas-upnp-org:service:AVTransport:1') {
+  private async transportCommand(action: string, body: { [key: string]: any } = {}) {
+    const data = await this.transportRequest(action, body)
+    if (data.$['xmlns:u'] === 'urn:schemas-upnp-org:service:AVTransport:1') {
       return true
     } else {
-      throw new Error({ err, data })
+      throw new Error(data)
     }
   }
 
-  private deviceRequest(name: string, bodyContent = '') {
-    const action = `"urn:schemas-upnp-org:service:DeviceProperties:1#${name}"`
-    const body = `<u:${name} xmlns:u="urn:schemas-upnp-org:service:DeviceProperties:1">${bodyContent}</u:${name}>`
-    return this.request(this.endpoints.device, action, body, `u:${name}Response`)
+  private deviceRequest(action: string, body: { [key: string]: any } = {}) {
+    return this.request(this.endpoints.device, 'DeviceProperties', action, body)
   }
 
-  private renderingRequest(name: string, bodyContent = '') {
-    const action = `"urn:schemas-upnp-org:service:RenderingControl:1#${name}"`
-    const body = `<u:${name} xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1"><InstanceID>0</InstanceID><Channel>Master</Channel>${bodyContent}</u:${name}>`
-    return this.request(this.endpoints.rendering, action, body, `u:${name}Response`)
+  private renderingRequest(action: string, body: { [key: string]: any } = {}) {
+    return this.request(this.endpoints.transport, 'RenderingControl', action,
+      { InstanceID: 0, Channel: 'Master', ...body })
   }
 
   private parseDIDLForSingleTrack(didl: DIDLLite) {
-    if ((!didl) || (!didl['DIDL-Lite']) || (!util.isArray(didl['DIDL-Lite']['item'])) || (!didl['DIDL-Lite']['item'][0])) {
+    if (!didl || !didl['DIDL-Lite'] || !didl['DIDL-Lite']['item']) {
       return {}
     }
-    return this.parseDIDLItem(didl['DIDL-Lite'].item[0])
+    return this.parseDIDLItem(didl['DIDL-Lite']['item'])
   }
 
   /**
@@ -165,19 +155,19 @@ export class Sonos {
 
     let albumArtURL: string | null = null
     if (albumArtURI) {
-      if (albumArtURI[0].indexOf('http') !== -1) {
-        albumArtURL = albumArtURI[0]
+      if (albumArtURI.indexOf('http') !== -1) {
+        albumArtURL = albumArtURI
       } else {
-        albumArtURL = 'http://' + this.host + ':' + this.port + albumArtURI[0]
+        albumArtURL = 'http://' + this.host + ':' + this.port + albumArtURI
       }
     }
 
     return {
-      title: dcTitle ? dcTitle[0] : null,
-      artist: dcCreator ? dcCreator[0] : null,
+      title: dcTitle ? dcTitle : null,
+      artist: dcCreator ? dcCreator : null,
       albumArtURL,
-      album: album ? album[0] : null,
-      uri: item.res ? item.res[0]._ : null,
+      album: album ? album : null,
+      uri: item.res ? item.res._ : null,
     }
   }
 
@@ -272,15 +262,15 @@ export class Sonos {
     if ((!util.isArray(data)) || (data.length < 1)) {
       return {}
     }
-    const metadata = data[0].TrackMetaData
-    const position = (parseInt(data[0].RelTime[0].split(':')[0], 10) * 60 * 60) +
-      (parseInt(data[0].RelTime[0].split(':')[1], 10) * 60) +
-      parseInt(data[0].RelTime[0].split(':')[2], 10)
-    const duration = (parseInt(data[0].TrackDuration[0].split(':')[0], 10) * 60 * 60) +
-      (parseInt(data[0].TrackDuration[0].split(':')[1], 10) * 60) +
-      parseInt(data[0].TrackDuration[0].split(':')[2], 10)
-    const trackUri = data[0].TrackURI ? data[0].TrackURI[0] : null
-    if ((metadata) && (metadata[0].length > 0) && metadata[0] !== 'NOT_IMPLEMENTED') {
+    const metadata = data.TrackMetaData
+    const position = (parseInt(data.RelTime.split(':'), 10) * 60 * 60) +
+      (parseInt(data.RelTime.split(':')[1], 10) * 60) +
+      parseInt(data.RelTime.split(':')[2], 10)
+    const duration = (parseInt(data.TrackDuration.split(':'), 10) * 60 * 60) +
+      (parseInt(data.TrackDuration.split(':')[1], 10) * 60) +
+      parseInt(data.TrackDuration.split(':')[2], 10)
+    const trackUri = data.TrackURI ? data.TrackURI : null
+    if ((metadata) && (metadata.length > 0) && metadata !== 'NOT_IMPLEMENTED') {
       const metadataData = await parseXML(metadata)
       const track = this.parseDIDLForSingleTrack(metadataData)
       track.position = position
@@ -291,8 +281,8 @@ export class Sonos {
       return track
     } else {
       const track = { position, duration }
-      if (data[0].TrackURI) {
-        track.uri = data[0].TrackURI[0]
+      if (data.TrackURI) {
+        track.uri = data.TrackURI
       }
       return track
     }
@@ -304,7 +294,7 @@ export class Sonos {
   async getVolume() {
     log('Sonos.getVolume()')
     const data = await this.renderingRequest('GetVolume')
-    return parseInt(data[0].CurrentVolume[0], 10)
+    return parseInt(data.CurrentVolume, 10)
   }
 
   /**
@@ -313,8 +303,7 @@ export class Sonos {
    */
   setVolume(volume: string) {
     log('Sonos.setVolume(%j)', volume)
-    const bodyContent = '<DesiredVolume>' + volume + '</DesiredVolume></u:SetVolume>'
-    return this.renderingRequest('SetVolume', bodyContent)
+    return this.renderingRequest('SetVolume', { DesiredVolume: volume })
   }
 
   /**
@@ -323,7 +312,7 @@ export class Sonos {
   async getMuted() {
     log('Sonos.getMuted()')
     const data = await this.renderingRequest('GetMute')
-    return !!parseInt(data[0].CurrentMute[0], 10)
+    return !!parseInt(data.CurrentMute, 10)
   }
 
   /**
@@ -331,8 +320,7 @@ export class Sonos {
    */
   setMuted(muted: boolean) {
     log('Sonos.setMuted(%j)')
-    const bodyContent = '<DesiredMute>' + (muted ? '1' : '0') + '</DesiredMute>'
-    return this.renderingRequest('SetMute', bodyContent)
+    return this.renderingRequest('SetMute', { DesiredMute: (muted ? '1' : '0') })
   }
 
   /**
@@ -349,15 +337,15 @@ export class Sonos {
       } else {
         queueResult = await this.queue({ uri, metadata })
       }
-      if (queueResult.length < 0 || !queueResult[0].FirstTrackNumberEnqueued) {
+      if (!queueResult.FirstTrackNumberEnqueued) {
         // TODO is this error accurate?
         throw new Error('Queuing was unsucessful')
       }
-      const selectTrackNum = queueResult[0].FirstTrackNumberEnqueued[0]
+      const selectTrackNum = queueResult.FirstTrackNumberEnqueued
       await this.selectTrack(selectTrackNum)
       return this.play()
     } else {
-      return this.transportCommand('Play', '<Speed>1</Speed>')
+      return this.transportCommand('Play', { Speed: 1 })
     }
   }
 
@@ -366,7 +354,7 @@ export class Sonos {
    */
   pause() {
     log('Sonos.pause()')
-    return this.transportCommand('Pause', '<Speed>1</Speed>')
+    return this.transportCommand('Pause', { Speed: 1 })
   }
 
   /**
@@ -374,7 +362,7 @@ export class Sonos {
    */
   stop() {
     log('Sonos.stop()')
-    return this.transportCommand('Stop', '<Speed>1</Speed>')
+    return this.transportCommand('Stop', { Speed: 1 })
   }
 
   /**
@@ -394,7 +382,11 @@ export class Sonos {
     if (ss < 10) {
       ss = '0' + ss
     }
-    return this.transportCommand('Seek', '<Unit>REL_TIME</Unit><Target>' + hh + ':' + mm + ':' + ss + '</Target>')
+    return this.transportCommand('Seek',
+      {
+        Unit: 'REL_TIME',
+        Target: hh + ':' + mm + ':' + ss,
+      })
   }
 
   /**
@@ -402,7 +394,7 @@ export class Sonos {
    */
   next() {
     log('Sonos.next()')
-    return this.transportCommand('Next', '<Speed>1</Speed>')
+    return this.transportCommand('Next', { Speed: 1 })
   }
 
   /**
@@ -410,7 +402,7 @@ export class Sonos {
    */
   previous() {
     log('Sonos.previous()')
-    return this.transportCommand('Previous', '<Speed>1</Speed>')
+    return this.transportCommand('Previous', { Speed: 1 })
   }
 
   /**
@@ -419,7 +411,10 @@ export class Sonos {
    */
   selectTrack(trackNr = 1) {
     log(`Sonos.selectTrack(${trackNr}`)
-    return this.transportCommand('Seek', '<Unit>TRACK_NR</Unit><Target>' + trackNr + '</Target>')
+    return this.transportCommand('Seek', {
+        Unit: 'TRACK_NR',
+        Target: trackNr,
+    })
   }
 
   /**
@@ -428,8 +423,10 @@ export class Sonos {
   async selectQueue() {
     log('Sonos.selectQueue()')
     const zoneData = await this.getZoneInfo()
-    const bodyContent = '<CurrentURI>x-rincon-queue:RINCON_' + zoneData.MACAddress.replace(/:/g, '') + '0' + this.port + '#0</CurrentURI><CurrentURIMetaData></CurrentURIMetaData>'
-    return this.transportCommand('SetAVTransportURI', bodyContent)
+    return this.transportCommand('SetAVTransportURI', {
+      CurrentURI: 'x-rincon-queue:RINCON_' + zoneData.MACAddress.replace(/:/g, '') + '0' + this.port + '#0',
+      CurrentURIMetaData: '',
+    })
   }
 
   /**
@@ -439,8 +436,10 @@ export class Sonos {
    */
   queueNext(opts: { uri: string, metadata?: string}) {
     log(`Sonos.queueNext(${opts})`)
-    const bodyContent = `<CurrentURI>${opts.uri}</CurrentURI><CurrentURIMetaData>${htmlEntities(opts.metadata ? opts.metadata : '')}</CurrentURIMetaData></u:SetAVTransportURI>`
-    return this.transportRequest('SetAVTransportURI', bodyContent)
+    return this.transportRequest('SetAVTransportURI', {
+      CurrentURI: opts.uri,
+      CurrentURIMetaData: opts.metadata || '',
+    })
   }
 
   /**
@@ -456,8 +455,12 @@ export class Sonos {
       positionInQueue: 0,
     }
     options = { ...defaultOptions, ...options }
-    const bodyContent = '<EnqueuedURI>' + options.uri + '</EnqueuedURI><EnqueuedURIMetaData>' + options.metadata + '</EnqueuedURIMetaData><DesiredFirstTrackNumberEnqueued>' + options.positionInQueue + '</DesiredFirstTrackNumberEnqueued><EnqueueAsNext>1</EnqueueAsNext>'
-    return this.transportRequest('AddURIToQueue', bodyContent)
+    return this.transportRequest('AddURIToQueue', {
+      EnqueuedURI: options.uri,
+      EnqueuedURIMetaData: options.metadata,
+      DesiredFirstTrackNumberEnqueued: options.positionInQueue,
+      EnqueueAsNext: 1,
+    })
   }
 
   /**
@@ -483,8 +486,8 @@ export class Sonos {
   async getLEDState(): Promise<"On" | "Off"> {
     log('Sonos.getLEDState()')
     const data = await this.deviceRequest('GetLEDState')
-    if (data[0] && data[0].CurrentLEDState && data[0].CurrentLEDState[0]) {
-      return data[0].CurrentLEDState[0]
+    if (data && data.CurrentLEDState) {
+      return data.CurrentLEDState
     } else {
       throw new Error('unknown response')
     }
@@ -495,37 +498,23 @@ export class Sonos {
    */
   setLEDState(desiredState: "On" | "Off") {
     log('Sonos.setLEDState(%j)', desiredState)
-    return this.deviceRequest('SetLEDState', '<DesiredLEDState>' + desiredState + '</DesiredLEDState>')
+    return this.deviceRequest('SetLEDState', { DesiredLEDState: desiredState })
   }
 
   /**
    * Get Zone Info
    */
-  async getZoneInfo() {
+  getZoneInfo() {
     log('Sonos.getZoneInfo()')
-    const data = await this.deviceRequest('GetZoneInfo')
-    const output = {}
-    for (const d in data[0]) {
-      if (data[0].hasOwnProperty(d) && d !== '$') {
-        output[d] = data[0][d][0]
-      }
-    }
-    return output
+    return this.deviceRequest('GetZoneInfo')
   }
 
   /**
    * Get Zone Attributes
    */
-  async getZoneAttrs() {
+  getZoneAttrs() {
     log('Sonos.getZoneAttrs()')
-    const data = await this.deviceRequest('GetZoneAttributes')
-    const output = {}
-    for (const d in data[0]) {
-      if (data[0].hasOwnProperty(d) && d !== '$') {
-        output[d] = data[0][d][0]
-      }
-    }
-    return output
+    return this.deviceRequest('GetZoneAttributes')
   }
 
   /**
@@ -537,14 +526,7 @@ export class Sonos {
     if (res.status !== 200) {
       throw new Error('Non-200 response code')
     }
-    const json = await parseXML(await res.text())
-    const output = {}
-    for (const d in json.root.device[0]) {
-      if (json.root.device[0].hasOwnProperty(d)) {
-        output[d] = json.root.device[0][d][0]
-      }
-    }
-    return output
+    return parseXML(await res.text())
   }
 
   /**
@@ -552,9 +534,11 @@ export class Sonos {
    */
   setName(name: string) {
     log('Sonos.setName(%j)', name)
-    name = name.replace(/[<&]/g, (str) => (str === '&') ? '&amp;' : '&lt;')
-    const bodyContent = '<DesiredZoneName>' + name + '</DesiredZoneName><DesiredIcon /><DesiredConfiguration />'
-    return this.deviceRequest('SetZoneAttributes', bodyContent)
+    return this.deviceRequest('SetZoneAttributes', {
+      DesiredZoneName: name,
+      DesiredIcon: '',
+      DesiredConfiguration: '',
+    })
   }
 
   /**
@@ -567,7 +551,7 @@ export class Sonos {
     if (!mode) {
       throw new Error('invalid play mode ' + playmode)
     }
-    return this.transportRequest('SetPlayMode', '<NewPlayMode>' + playmode.toUpperCase() + '</NewPlayMode>')
+    return this.transportRequest('SetPlayMode', { NewPlayMode: playmode.toUpperCase() })
   }
 
   /**
@@ -608,7 +592,7 @@ export class Sonos {
       TRANSITIONING: 'transitioning',
       NO_MEDIA_PRESENT: 'no_media',
     }
-    const state = data[0].CurrentTransportState[0]
+    const state = data.CurrentTransportState
     return statesToString[state]
   }
 

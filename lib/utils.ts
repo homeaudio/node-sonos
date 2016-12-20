@@ -47,13 +47,18 @@ export function htmlEntities(str: string) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
-export function prepareSoapActionXML(action: string, name: string, body: { [key: string]: any }) {
-    return buildXML({
-        [`u:${action}`]: {
-            '@xmlns:u': `urn:schemas-upnp-org:service:${name}:1`,
-            ...body,
-        },
-    })
+export function prepareSoapActionXML(action: string, serviceName: string, body: { [key: string]: any }) {
+  const xmlns = `urn:schemas-upnp-org:service:${serviceName}:1`
+  return {
+    bodySOAPAction: {
+      [`u:${action}`]: {
+        '@xmlns:u': xmlns,
+        ...body,
+      },
+    },
+    headerSOAPAction: `${xmlns}#${action}`,
+    responseTag: `u:${action}Response`,
+  }
 }
 
 /**
@@ -63,16 +68,25 @@ export function prepareSoapActionXML(action: string, name: string, body: { [key:
  * @param  {String}   body
  * @param  {String}   responseTag Expected Response Container XML Tag
  */
-export async function soapPost(host: string, port: number, endpoint: string, action: string, body: string, responseTag: string) {
+export async function soapPost(host: string, port: number, endpoint: string, serviceName: string, action: string, body: { [key: string]: any }) {
+  const url = `http://${host}:${port}${endpoint}`
+  logRequest(url)
+  logRequest(`${serviceName}/${action}`)
   logRequest(body)
-  const res = await fetch(`http://${host}:${port}${endpoint}`,
+  const {
+      bodySOAPAction,
+      headerSOAPAction,
+      responseTag,
+    } = prepareSoapActionXML(action, serviceName, body)
+  const bodyXML = buildXML(bodySOAPAction)
+  const res = await fetch(url,
     {
       method: 'POST',
       headers: {
-        SOAPAction: action,
+        SOAPAction: headerSOAPAction,
         'Content-type': 'text/xml; charset=utf8',
       },
-      body: withinSoapEnvelope(body),
+      body: withinSoapEnvelope(bodyXML),
     })
   if (res.status !== 200) {
     throw new Error('HTTP response code ' + res.status + ' for ' + action)
@@ -87,7 +101,8 @@ export async function soapPost(host: string, port: number, endpoint: string, act
     throw new Error(resultBody['s:Fault'])
   }
   if (typeof resultBody[responseTag] !== 'undefined') {
-    logResponse(json['s:Envelope']['s:Body'][responseTag])
+    const {$, ...response} = json['s:Envelope']['s:Body'][responseTag]
+    logResponse(response)
     return json['s:Envelope']['s:Body'][responseTag]
   } else {
     throw new Error(`Missing response tag and no error for '${action}: ${json} `)
