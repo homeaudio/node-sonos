@@ -1,7 +1,9 @@
-var sonos = require('../')
-var debug = require('debug')('search')
+import { search } from '../'
 
-sonos.search(function (sonos) {
+console.log('Searching for Sonos devices...')
+const searcher = search()
+
+search(function (sonos) {
   debug("Found Sonos '%s'", sonos.host)
   sonos.currentTrack(function (err, track) {
     if (err) throw err
