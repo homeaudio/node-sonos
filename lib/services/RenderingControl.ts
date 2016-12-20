@@ -9,7 +9,7 @@ export class RenderingControl extends Service {
       port,
       controlURL: '/MediaRenderer/RenderingControl/Control',
       eventSubURL: '/MediaRenderer/RenderingControl/Event',
-      SCPDURL: '/xml/RenderingControl1.xml'
+      SCPDURL: '/xml/RenderingControl1.xml',
     })
   }
 

@@ -9,7 +9,7 @@ export class GroupManagement extends Service {
       port,
       controlURL: '/GroupManagement/Control',
       eventSubURL: '/GroupManagement/Event',
-      SCPDURL: '/xml/GroupManagement1.xml'
+      SCPDURL: '/xml/GroupManagement1.xml',
     })
   }
 

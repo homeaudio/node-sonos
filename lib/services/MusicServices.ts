@@ -9,7 +9,7 @@ export class MusicServices extends Service {
       port,
       controlURL: '/MusicServices/Control',
       eventSubURL: '/MusicServices/Event',
-      SCPDURL: '/xml/MusicServices1.xml'
+      SCPDURL: '/xml/MusicServices1.xml',
     })
   }
 

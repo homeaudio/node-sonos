@@ -1,7 +1,7 @@
 import { Service } from './Service'
 
 export class AudioIn extends Service {
-  
+
   constructor(host: string, port?: number) {
     super({
       name: 'AudioIn',
@@ -9,7 +9,7 @@ export class AudioIn extends Service {
       port,
       controlURL: '/AudioIn/Control',
       eventSubURL: '/AudioIn/Event',
-      SCPDURL: '/xml/AudioIn1.xml'
+      SCPDURL: '/xml/AudioIn1.xml',
     })
   }
 

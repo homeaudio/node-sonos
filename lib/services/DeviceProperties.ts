@@ -9,7 +9,7 @@ export class DeviceProperties extends Service {
       port,
       controlURL: '/DeviceProperties/Control',
       eventSubURL: '/DeviceProperties/Event',
-      SCPDURL: '/xml/DeviceProperties1.xml'
+      SCPDURL: '/xml/DeviceProperties1.xml',
     })
   }
 

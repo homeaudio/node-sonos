@@ -1,7 +1,7 @@
 import { Service } from './Service'
 
 export class SystemProperties extends Service {
-  
+
   constructor(host: string, port?: number) {
     super({
       name: 'SystemProperties',
@@ -9,7 +9,7 @@ export class SystemProperties extends Service {
       port,
       controlURL: '/SystemProperties/Control',
       eventSubURL: '/SystemProperties/Event',
-      SCPDURL: '/xml/SystemProperties1.xml'
+      SCPDURL: '/xml/SystemProperties1.xml',
     })
   }
 

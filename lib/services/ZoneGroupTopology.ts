@@ -9,7 +9,7 @@ export class ZoneGroupTopology extends Service {
       port,
       controlURL: '/ZoneGroupTopology/Control',
       eventSubURL: '/ZoneGroupTopology/Event',
-      SCPDURL: '/xml/ZoneGroupTopology1.xml'
+      SCPDURL: '/xml/ZoneGroupTopology1.xml',
     })
   }
 

@@ -1,7 +1,7 @@
 import { Service } from './Service'
 
 export class AlarmClock extends Service {
-  
+
   constructor(host: string, port?: number) {
     super({
       name: 'AlarmClock',
@@ -9,7 +9,7 @@ export class AlarmClock extends Service {
       port,
       controlURL: '/AlarmClock/Control',
       eventSubURL: '/AlarmClock/Event',
-      SCPDURL: '/xml/AlarmClock1.xml'
+      SCPDURL: '/xml/AlarmClock1.xml',
     })
   }
 
