@@ -54,14 +54,14 @@
   "devDependencies": {
     "@types/debug": "0.0.29",
     "@types/ip": "0.0.29",
-    "@types/node": "^6.0.52",
+    "@types/node": "^6.0.54",
     "@types/node-fetch": "^1.6.6",
-    "@types/request": "0.0.36",
+    "@types/request": "0.0.37",
     "@types/underscore": "^1.7.36",
     "@types/xml2js": "0.0.32",
     "@types/xmlbuilder": "0.0.28",
     "mocha": "^3.2.0",
-    "tslint": "^4.1.0",
+    "tslint": "^4.2.0",
     "typescript": "^2.1.4"
   }
 }

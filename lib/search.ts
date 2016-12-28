@@ -2,12 +2,11 @@ import * as dgram from 'dgram'
 import { EventEmitter } from 'events'
 import { Sonos } from './sonos'
 
-interface SearchOptions {
+export interface SearchOptions {
 
 }
 
 /**
- * Search "Class"
  * Emits 'DeviceAvailable' on a Sonos Component Discovery
  */
 export class Search extends EventEmitter {
@@ -81,13 +80,7 @@ export class Search extends EventEmitter {
  * @param  {Function} listener Optional 'DeviceAvailable' listener (sonos)
  * @return {Search/EventEmitter Instance}
  */
-export function search(options, listener) {
-  if (typeof options === 'function') {
-    listener = options
-    options = null
-  }
-  options = options || {}
-  listener = listener || null
+export function search(listener: Function, options = {}) {
   const search = new Search(options)
   if (listener !== null) {
     search.on('DeviceAvailable', listener)
