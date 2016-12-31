@@ -1,17 +1,10 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
-## [Unreleased]
+## 2.0.0
 
-### Fixed
-* encoding: Fix encoding failues on objects containing a 'length' key (thanks to [connor4312](https://github.com/connor4312))
-
-### Added
-* TypeScript definitions (thanks to [SPARTAN563](https://github.com/SPARTAN563))
-* Support for configuring the client by providing a url to locate InfluxDB (thanks to [mmalecki](https://github.com/mmalecki))
-* CONTRIBUTING.md describing guidelines for contributing to the project
-
-
-
+* Migration to Typescript, modern ES2015+ (classes, arrow functions, Promises, etc)
+* Style change - drop-semicolons!
+* Promised-based API instead of callback-based
+* Numerous API changes to keep things more simple/consistent. To be documented.

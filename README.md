@@ -44,7 +44,7 @@ For now do note that I have changed the API in a number of places to try and mak
 2. I've tried to leave JSdocs where the comment is still helpful and relevent. I've removed typing information from here (DRI).
 3. I've adapted ES2015 style classes, which I personally find much more legible.
 
-There's lots of other changes, but I'll have to come back and state then clearly against what is currently on master if there is further interest in this fork.
+There's lots of other changes, but I'll have to come back and state then clearly against what is currently on @bencevans branch if there is further interest in this fork.
 
 ## Examples
 
