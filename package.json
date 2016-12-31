@@ -1,6 +1,6 @@
 {
   "name": "@homeaudio/sonos",
-  "version": "0.12.1",
+  "version": "1.0.0",
   "description": "Node.js Sonos Interface",
   "main": "index.js",
   "types": "index.ts",
