@@ -2,7 +2,7 @@
 
 This project adheres to [Semantic Versioning](http://semver.org/).
 
-## 2.0.0
+## 1.0.0
 
 * Migration to Typescript, modern ES2015+ (classes, arrow functions, Promises, etc)
 * Style change - drop-semicolons!
