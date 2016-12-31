@@ -1,69 +1,71 @@
 # node-sonos
 
-[![npm](http://img.shields.io/npm/v/sonos.svg?style=flat-square)](https://www.npmjs.org/package/sonos)
-[![build](http://img.shields.io/travis/bencevans/node-sonos/master.svg?style=flat-square)](https://travis-ci.org/bencevans/node-sonos)
-[![js-standard-style](https://img.shields.io/badge/code%20style-standard-brightgreen.svg?style=flat-square)](https://github.com/feross/standard)
-
 Node.js Interface to [Sonos](http://sonos.com)
 
-Please open [pull-requests](https://github.com/bencevans/node-sonos) and ask questions [@bencevans](https://twitter.com/bencevans).
+# IMPORTANT NOTE - TYPESCRIPT FORK
+
+This is a fork of [bencevans/node-sonos](https://github.com/bencevans/node-sonos) that @jabooth undertook for fun in Dec 2016. I moved `node-sonos` and a handful of other projects to Typescript and placed them under a new namespace at [github/homeaudio](https://github.com/homeaudio/) in an effort to better understand and rapidly improve all these interrelated projects.
+
+For now I'm maintaining my forks at [github/homeaudio](https://github.com/homeaudio/), but I would be delighted if these forks were re-unified with their original projects at some point. Given the extensive nature of the changes made though, I understand that this may be challenging for the original authors.
+
 
 ## API
 
-For detailed info read the [/API.md](https://github.com/bencevans/node-sonos/blob/master/API.md) file, else…
+This fork of `node-sonos` moves to a promise-based API. If you are familiar with @bencevans original `node-sonos` client, expect to change calls of the form:
 
-* search([options], [deviceAvailableListener])
-* Class: Search([options])
-  * Event: 'DeviceAvailable'
-  * destroy()
-* Class: Sonos(host, [port])
-  * currentTrack(callback)
-  * deviceDescription(callback)
-  * flush(callback)
-  * getCurrentState(callback)
-  * getLEDState(callback)
-  * getMusicLibrary(search, options, callback)
-  * getMuted(callback)
-  * getTopology(callback)
-  * getVolume(callback)
-  * getZoneAttrs(callback)
-  * getZoneInfo(callback)
-  * getQueue(callback)
-  * next(callback)
-  * parseDIDL(didl)
-  * pause(callback)
-  * play(uri, callback)
-  * previous(callback)
-  * queue(uri, positionInQueue, callback)
-  * queueNext(uri, callback)
-  * request(endpoint, action, body, responseTag, callback)
-  * seek(seconds, callback)
-  * setLEDState(desiredState, callback)
-  * setMuted(muted, callback)
-  * setName(name, callback)
-  * setPlayMode(mode, callback)
-  * setVolume(volume, callback)
-  * stop(callback)
+```js
+const sonos = new Sonos()
+sonos.play(callback)
+```
+to
+
+```typescript
+const sonos = new Sonos()
+sonos.play().then(callback)
+...
+```
+
+If you are working in Typescript, Babel, or future JS runtimes, you can adopt async/await:
+
+```js
+async function main() {
+    const sonos = new Sonos()
+    const result = await sonos.play()
+    ...
+}
+
+main()
+```
+As this fork is re-written in Typescript, the API is typed. This typing information will be used to generate API docs in the future.
+
+For now do note that I have changed the API in a number of places to try and make things more consistent and simple. In general:
+
+1. I've removed many cases where it was permitted to pass in either an object/function/string as the `i`'th parameter of a function. This led to a lot of pretty grim introspection at the top of methods to figure out the callee's intent, and made typing the API much more confusing than it needed to be. Now, the only positional arguments taken are those that have to be supplied - further optional arguments are provided in options objects with well-defined shape.
+2. I've tried to leave JSdocs where the comment is still helpful and relevent. I've removed typing information from here (DRI).
+3. I've adapted ES2015 style classes, which I personally find much more legible.
+
+There's lots of other changes, but I'll have to come back and state then clearly against what is currently on master if there is further interest in this fork.
 
 ## Examples
 
-Additional examples can be found in the [/examples](https://github.com/bencevans/node-sonos/tree/master/examples) directory within the repository.
+Additional examples can be found in the [/examples](https://github.com/homeaudio/node-sonos/tree/master/examples) directory within the repository.
 
 ## Installation
 
 *Via npm*
 
-    npm install sonos
+    npm install @homeaudio/sonos
 
 *Via Git*
 
-    npm install git://github.com/bencevans/node-sonos.git
+    npm install git://github.com/homeaudio/node-sonos.git
 
 ## Maintainers
 
 * Ben Evans (@bencevans)
 * Stephen Wan (@stephen)
 * Marshall T. Rose (@mrose17)
+* James Booth (@jabooth)
 
 And a big thanks to all you other [contributors](https://github.com/bencevans/node-sonos/graphs/contributors)! Pull-requests are beautiful things.
 

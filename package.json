@@ -1,5 +1,5 @@
 {
-  "name": "sonos",
+  "name": "@homeaudio/sonos",
   "version": "0.12.1",
   "description": "Node.js Sonos Interface",
   "main": "index.js",
@@ -7,14 +7,15 @@
   "scripts": {
     "build": "tsc",
     "watch": "tsc -w",
-    "lint": "standard",
+    "lint": "tslint -c tslint.json ./lib/*.ts",
     "test": "mocha test/sonos.test.js",
     "test-onsite": "mocha test/",
-    "env-run": "npm run $CMD"
+    "env-run": "npm run $CMD",
+    "prepublish": "tsc && echo Compiled successfully || echo Compiled with errors"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/bencevans/node-sonos.git"
+    "url": "https://github.com/homeaudio/node-sonos.git"
   },
   "keywords": [
     "sonos",
@@ -49,7 +50,7 @@
     "xmlbuilder": "^8.2.2"
   },
   "bugs": {
-    "url": "http://github.com/bencevans/node-sonos/issues"
+    "url": "http://github.com/homeaudio/node-sonos/issues"
   },
   "devDependencies": {
     "@types/debug": "0.0.29",
